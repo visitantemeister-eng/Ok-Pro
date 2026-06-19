@@ -408,6 +408,7 @@ function App() {
   const [config, setConfig] = useState<RenderConfig>(DEFAULT_CONFIG);
 
   const mergedSubtitles = useMemo(() => {
+    const usedImageIds = new Set<string>();
     // 1. First, merge short blocks under minSubChars
     let mergedBlocks: SubtitleBlock[] = [];
     const minChars = config.minSubChars !== undefined ? config.minSubChars : 40;
@@ -592,7 +593,14 @@ function App() {
           if (pool.length === 0) return null;
           let candidates = pool.filter(item => !excludeIds.has(item.id));
           if (candidates.length === 0) candidates = pool;
-          const selected = candidates[0];
+
+          let freshCandidates = candidates.filter(item => !usedImageIds.has(item.id));
+          if (freshCandidates.length === 0) freshCandidates = candidates;
+
+          const selected = freshCandidates[Math.floor(Math.random() * freshCandidates.length)];
+          if (selected) {
+            usedImageIds.add(selected.id);
+          }
           return selected;
         };
 
@@ -1048,6 +1056,17 @@ function App() {
 
   // Load state and files on startup
   useEffect(() => {
+    // Request persistent storage to prevent browser from auto-clearing IndexedDB when local space is low
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then(granted => {
+        if (granted) {
+          console.log("✓ Quyền lưu trữ bền bỉ (Persistent Storage) đã được cấp thành công!");
+        } else {
+          console.warn("⚠ Trình duyệt từ chối cấp quyền lưu trữ bền bỉ. Ảnh có thể bị xóa nếu ổ đĩa đầy hoặc chạy ẩn danh.");
+        }
+      });
+    }
+
     // 1. Recover character images
     getAllImagesFromDB().then((loadedImages) => {
       setImages(loadedImages);
@@ -1890,12 +1909,34 @@ function App() {
                            legacyKws.length > 0;
 
         if (canInherit && prevBlock) {
-          leftImgId = prevBlock.matchedLeftImageId;
-          rightImgId = prevBlock.matchedRightImageId;
           leftKw = prevBlock.matchedLeftKeyword;
           rightKw = prevBlock.matchedRightKeyword;
-          matchedImgIds = prevBlock.matchedImageIds;
-          matchedKwsList = prevBlock.matchedKeywordsList;
+
+          const excludeLeft = new Set<string>();
+          if (prevBlock.matchedLeftImageId) excludeLeft.add(prevBlock.matchedLeftImageId);
+          const mediaLeft = leftKw ? resolveMediaForKw(leftKw, shouldPreferVideo, excludeLeft) : null;
+          leftImgId = mediaLeft ? mediaLeft.id : prevBlock.matchedLeftImageId;
+
+          const excludeRight = new Set<string>();
+          if (prevBlock.matchedRightImageId) excludeRight.add(prevBlock.matchedRightImageId);
+          if (leftImgId) excludeRight.add(leftImgId);
+
+          const mediaRight = rightKw ? resolveMediaForKw(rightKw, shouldPreferVideo, excludeRight) : null;
+          rightImgId = mediaRight ? mediaRight.id : prevBlock.matchedRightImageId;
+
+          const tempImgIds: string[] = [];
+          const tempKwsList: string[] = [];
+          if (leftImgId && leftKw) {
+            tempImgIds.push(leftImgId);
+            tempKwsList.push(leftKw);
+          }
+          if (rightImgId && rightKw) {
+            tempImgIds.push(rightImgId);
+            tempKwsList.push(rightKw);
+          }
+          matchedImgIds = tempImgIds.length > 0 ? tempImgIds : prevBlock.matchedImageIds;
+          matchedKwsList = tempKwsList.length > 0 ? tempKwsList : prevBlock.matchedKeywordsList;
+
           inheritanceDist = (prevBlock.inheritanceDistance ?? 0) + 1;
           isFallbackBlockVal = false;
         } else {

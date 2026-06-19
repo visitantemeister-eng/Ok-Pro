@@ -1182,12 +1182,34 @@ export default function SubtitleMatcher({
                            legacyKws.length > 0;
 
         if (canInherit && prevBlock) {
-          leftImgId = prevBlock.matchedLeftImageId;
-          rightImgId = prevBlock.matchedRightImageId;
           leftKw = prevBlock.matchedLeftKeyword;
           rightKw = prevBlock.matchedRightKeyword;
-          matchedImgIds = prevBlock.matchedImageIds;
-          matchedKwsList = prevBlock.matchedKeywordsList;
+
+          const excludeLeft = new Set<string>();
+          if (prevBlock.matchedLeftImageId) excludeLeft.add(prevBlock.matchedLeftImageId);
+          const mediaLeft = leftKw ? resolveMediaForKw(leftKw, shouldPreferVideo, excludeLeft) : null;
+          leftImgId = mediaLeft ? mediaLeft.id : prevBlock.matchedLeftImageId;
+
+          const excludeRight = new Set<string>();
+          if (prevBlock.matchedRightImageId) excludeRight.add(prevBlock.matchedRightImageId);
+          if (leftImgId) excludeRight.add(leftImgId);
+
+          const mediaRight = rightKw ? resolveMediaForKw(rightKw, shouldPreferVideo, excludeRight) : null;
+          rightImgId = mediaRight ? mediaRight.id : prevBlock.matchedRightImageId;
+
+          const tempImgIds: string[] = [];
+          const tempKwsList: string[] = [];
+          if (leftImgId && leftKw) {
+            tempImgIds.push(leftImgId);
+            tempKwsList.push(leftKw);
+          }
+          if (rightImgId && rightKw) {
+            tempImgIds.push(rightImgId);
+            tempKwsList.push(rightKw);
+          }
+          matchedImgIds = tempImgIds.length > 0 ? tempImgIds : prevBlock.matchedImageIds;
+          matchedKwsList = tempKwsList.length > 0 ? tempKwsList : prevBlock.matchedKeywordsList;
+
           inheritanceDist = (prevBlock.inheritanceDistance ?? 0) + 1;
           isFallbackBlockVal = false;
         } else {
