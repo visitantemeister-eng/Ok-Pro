@@ -1818,20 +1818,6 @@ export function drawVideoFrame(
   })();
 
   const randomizeImageId = (id: string | null, blockId: number, colIdx: number, isPrev: boolean): string | null => {
-    if (!id) return null;
-    const mapping = uniqueIdMapping[blockId];
-    if (mapping) {
-      if (colIdx === 0) {
-        const mapped = mapping.left;
-        if (mapped) return mapped;
-      } else if (colIdx === 1) {
-        const mapped = mapping.right;
-        if (mapped) return mapped;
-      } else {
-        const mapped = mapping.list && mapping.list[colIdx];
-        if (mapped) return mapped;
-      }
-    }
     return id;
   };
 

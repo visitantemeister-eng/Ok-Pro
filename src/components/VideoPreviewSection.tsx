@@ -1030,12 +1030,12 @@ export default function VideoPreviewSection({
               style={{ width: `${(playbackTime / duration) * 100}%` }}
             />
             {/* Render small visual indicator notches for subtitles start markers */}
-            {subtitles.map((sub) => (
+            {subtitles.map((sub, idx) => (
               <div
-                key={sub.id}
+                key={`${sub.id}-${idx}`}
                 className="absolute top-0 bottom-0 bg-white/20 w-[1px] pointer-events-none"
                 style={{ left: `${(sub.startTime / duration) * 100}%` }}
-                title={`Sub #${sub.id}: ${sub.text}`}
+                title={`Sub #${sub.id}-${idx}: ${sub.text}`}
               />
             ))}
             {/* Playhead thumb knob */}

@@ -585,6 +585,16 @@ function App() {
       })();
       const shouldPreferVideo = !!isPriorityBlock;
 
+      const getDeterministicIndex = (seedStr: string, poolLength: number): number => {
+        if (poolLength <= 1) return 0;
+        let hash = 0;
+        for (let i = 0; i < seedStr.length; i++) {
+          hash = (hash << 5) - hash + seedStr.charCodeAt(i);
+          hash |= 0;
+        }
+        return Math.abs(hash) % poolLength;
+      };
+
       const resolveMediaForKw = (kw: string, preferVideo: boolean, excludeIds: Set<string> = new Set()): { id: string; keyword: string } | null => {
         const imgPool = getImagesForKw(kw);
         const videoPool = getVideosForKw(kw);
@@ -597,7 +607,9 @@ function App() {
           let freshCandidates = candidates.filter(item => !usedImageIds.has(item.id));
           if (freshCandidates.length === 0) freshCandidates = candidates;
 
-          const selected = freshCandidates[Math.floor(Math.random() * freshCandidates.length)];
+          const seedStr = `${b.text}_${b.startTime}_${kw}_${excludeIds.size}`;
+          const index = getDeterministicIndex(seedStr, freshCandidates.length);
+          const selected = freshCandidates[index];
           if (selected) {
             usedImageIds.add(selected.id);
           }
@@ -747,13 +759,12 @@ function App() {
     }
     
     const splitBlocks: SubtitleBlock[] = [];
-    let nextId = 1;
     
     for (const block of mergedSubtitles) {
       if (block.text.length <= maxChars) {
         splitBlocks.push({
           ...block,
-          id: nextId++
+          id: block.id
         });
         continue;
       }
@@ -762,7 +773,7 @@ function App() {
       if (textChunks.length <= 1) {
         splitBlocks.push({
           ...block,
-          id: nextId++
+          id: block.id
         });
         continue;
       }
@@ -788,7 +799,7 @@ function App() {
         
         splitBlocks.push({
           ...block,
-          id: nextId++,
+          id: block.id,
           text: chunkText,
           startTime: Number(chunkStartTime.toFixed(3)),
           endTime: Number(chunkEndTime.toFixed(3)),
