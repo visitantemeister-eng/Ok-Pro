@@ -1299,6 +1299,35 @@ export default function SubtitleMatcher({
         matchedImgIds = [firstVideoId];
       }
 
+      // Enforce unique character restriction: Keep at most one image/video per unique character name
+      if (matchedImgIds && matchedImgIds.length > 0) {
+        const seenChars = new Set<string>();
+        const uniqueIds: string[] = [];
+        for (const id of matchedImgIds) {
+          const img = images.find(x => x.id === id);
+          const vid = videos.find(x => x.id === id);
+          const charName = img?.characterName || vid?.characterName;
+          if (charName && charName !== 'Không có nhân vật' && charName !== 'Tất cả' && charName !== 'Không có') {
+            const lower = charName.toLowerCase();
+            if (seenChars.has(lower)) {
+              continue;
+            }
+            seenChars.add(lower);
+          }
+          uniqueIds.push(id);
+        }
+        matchedImgIds = uniqueIds;
+        // Keep left and right IDs aligned in case they are set
+        if (leftImgId && !matchedImgIds.includes(leftImgId)) {
+          leftImgId = matchedImgIds[0] || undefined;
+          leftKw = leftImgId ? (images.find(x => x.id === leftImgId)?.characterName || videos.find(x => x.id === leftImgId)?.characterName) : undefined;
+        }
+        if (rightImgId && !matchedImgIds.includes(rightImgId)) {
+          rightImgId = matchedImgIds[1] || undefined;
+          rightKw = rightImgId ? (images.find(x => x.id === rightImgId)?.characterName || videos.find(x => x.id === rightImgId)?.characterName) : undefined;
+        }
+      }
+
       resultBlocks.push({
         ...block,
         matchedLeftImageId: leftImgId,

@@ -156,7 +156,7 @@ export interface RenderConfig {
   bgEffectConsecutive?: number; // active trigger duration length (blocks)
   
   // Audio volume controls
-  mainAudioVolume?: number; // volume of main voice file (0 to 200, default 100)
+  mainAudioVolume?: number; // volume of main voice file (50 to 400, default 200)
   typewriterVolume?: number; // volume scale of typewriter click sound (0 to 200, default 100)
 
   // Human-like Behavior controls

@@ -38,7 +38,8 @@ import {
   ChevronLeft,
   Loader2,
   ShieldAlert,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Volume2
 } from 'lucide-react';
 
 const SUBTITLE_FONTS = [
@@ -346,8 +347,8 @@ export default function SettingsModal({
   // Dynamically update voice volume during real-time auditioning
   useEffect(() => {
     if (auditionVoiceAudioRef.current) {
-      const vol = config.mainAudioVolume !== undefined ? config.mainAudioVolume : 100;
-      auditionVoiceAudioRef.current.volume = vol / 100;
+      const vol = config.mainAudioVolume !== undefined ? config.mainAudioVolume : 200;
+      auditionVoiceAudioRef.current.volume = Math.min(1.0, vol / 100);
     }
   }, [config.mainAudioVolume]);
 
@@ -378,8 +379,8 @@ export default function SettingsModal({
         }
         auditionVoiceAudioRef.current.currentTime = 0;
         auditionVoiceAudioRef.current.loop = true;
-        const mainVol = config.mainAudioVolume !== undefined ? config.mainAudioVolume : 100;
-        auditionVoiceAudioRef.current.volume = mainVol / 100;
+        const mainVol = config.mainAudioVolume !== undefined ? config.mainAudioVolume : 200;
+        auditionVoiceAudioRef.current.volume = Math.min(1.0, mainVol / 100);
       } else {
         if (auditionVoiceAudioRef.current) {
           auditionVoiceAudioRef.current.pause();
@@ -1910,26 +1911,7 @@ export default function SettingsModal({
                 </div>
               </div>
 
-              <div className="border-t border-white/5 pt-4 grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-white/50 font-medium block mb-1.5">Tốc độ khung hình (FPS):</label>
-                  <select
-                    value={config.fps}
-                    onChange={(e) => updateConfig('fps', parseInt(e.target.value))}
-                    className="w-full text-xs bg-[#050505] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono"
-                  >
-                    <option value={24}>24 FPS (Cinematic)</option>
-                    <option value={30}>30 FPS (Truyền thống)</option>
-                    <option value={60}>60 FPS (Siêu mượt mà)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-white/50 font-medium block mb-1.5">Tỉ lệ xuất mẫu:</label>
-                  <div className="text-xs text-white/30 bg-white/5 border border-white/5 rounded-lg px-3 py-2">
-                    Lớn nhất 16:9 • Hỗ trợ GPU Canvas
-                  </div>
-                </div>
-              </div>
+
 
               <div className="bg-blue-500/5 p-4 rounded-xl border border-blue-500/10 space-y-3">
                 <div>
@@ -4274,6 +4256,40 @@ export default function SettingsModal({
                   <p className="text-[10.5px] text-white/40 mt-1">
                     Nhạc nền này sẽ tự động lặp lại (loop) liên tục suốt chặng video. Nếu nạp nhiều bài, hệ thống sẽ tự động chọn <strong>Ngẫu nhiên</strong> 1 bài mỗi lần chạy hoặc xuất video.
                   </p>
+                </div>
+
+                {/* Main Audio Volume Control */}
+                <div className="bg-gradient-to-r from-amber-500/5 to-amber-600/5 border border-amber-500/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-white font-bold text-xs flex items-center gap-1.5 leading-tight">
+                        <Volume2 size={13} className="text-amber-400" />
+                        Âm lượng Tệp âm thanh gốc (Audio):
+                      </h4>
+                      <p className="text-[10px] text-white/40 mt-0.5">
+                        Tăng giảm biên độ giọng nói của tệp âm thanh thuyết minh (Audio chính) từ 50% đến 400%.
+                      </p>
+                    </div>
+                    <div className="bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                      <span className="text-xs font-mono font-bold text-amber-400">
+                        {config.mainAudioVolume !== undefined ? config.mainAudioVolume : 200}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-mono text-white/30 font-medium">50%</span>
+                    <input
+                      type="range"
+                      min="50"
+                      max="400"
+                      step="5"
+                      value={config.mainAudioVolume !== undefined ? config.mainAudioVolume : 200}
+                      onChange={(e) => updateConfig('mainAudioVolume', parseInt(e.target.value))}
+                      className="flex-1 accent-amber-500 bg-[#050505]/40 h-1 rounded-sm cursor-pointer"
+                    />
+                    <span className="text-[10px] font-mono text-white/30 font-medium">400%</span>
+                  </div>
                 </div>
 
                 {/* ADVANCED ANTI-YOUTUBE RADAR CHAOTIC NOISE WAVE BLOCK */}

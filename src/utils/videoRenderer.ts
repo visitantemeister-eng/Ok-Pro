@@ -1822,10 +1822,28 @@ export function drawVideoFrame(
   };
 
   const filterImageIdsForMode = (block: SubtitleBlock, ids: string[]): string[] => {
-    if (ids.length <= 1) return ids;
+    // Keep at most one image/video per unique character name
+    const seenCharsList = new Set<string>();
+    const uniqueCharIds: string[] = [];
+    for (const id of ids) {
+      const img = images.find(x => x.id === id);
+      const vid = (videos || []).find(x => x.id === id);
+      const charName = img?.characterName || vid?.characterName;
+      if (charName && charName !== 'Không có nhân vật' && charName !== 'Tất cả' && charName !== 'Không có') {
+        const lower = charName.toLowerCase();
+        if (seenCharsList.has(lower)) {
+          continue;
+        }
+        seenCharsList.add(lower);
+      }
+      uniqueCharIds.push(id);
+    }
+    const filteredIds = uniqueCharIds;
+
+    if (filteredIds.length <= 1) return filteredIds;
     const mode = config.singleKeywordMode || 'pair';
     if (mode === 'no_split') {
-      return ids.slice(0, 1);
+      return filteredIds.slice(0, 1);
     }
     const matchedKws = Array.from(new Set([
       block.matchedLeftKeyword,
@@ -1855,13 +1873,13 @@ export function drawVideoFrame(
       else if (mode === 'percent_75_25') shouldPair = seed < 75;
 
       if (!shouldPair) {
-        return ids.slice(0, 1);
+        return filteredIds.slice(0, 1);
       } else {
-        return ids.slice(0, 2);
+        return filteredIds.slice(0, 2);
       }
     }
     const kwCount = Math.min(matchedKws.length, 4);
-    return ids.slice(0, kwCount);
+    return filteredIds.slice(0, kwCount);
   };
   
   // 1. Solid clear background

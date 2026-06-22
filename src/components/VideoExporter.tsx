@@ -315,7 +315,7 @@ export default function VideoExporter({
           playNode.buffer = audioBuf;
           
           const mainGain = recordCtx.createGain();
-          const mainVol = exportConfig.mainAudioVolume !== undefined ? exportConfig.mainAudioVolume : 100;
+          const mainVol = exportConfig.mainAudioVolume !== undefined ? exportConfig.mainAudioVolume : 200;
           mainGain.gain.value = mainVol / 100;
           mainGainNode = mainGain;
           
@@ -729,7 +729,7 @@ export default function VideoExporter({
         }
 
         if (mainGainNode && recordCtx) {
-          const mainVol = exportConfig.mainAudioVolume !== undefined ? exportConfig.mainAudioVolume : 100;
+          const mainVol = exportConfig.mainAudioVolume !== undefined ? exportConfig.mainAudioVolume : 200;
           mainGainNode.gain.setValueAtTime((mainVol / 100) * targetVolumeFactor, recordCtx.currentTime);
         }
 
@@ -942,10 +942,7 @@ export default function VideoExporter({
             <span>Kích thước hình ảnh xuất:</span>
             <span className="text-white font-mono font-medium">{config.width}x{config.height} px</span>
           </div>
-          <div className="flex justify-between border-b border-white/5 pb-1">
-            <span>Tốc độ khung hình (Frame Rate):</span>
-            <span className="text-white font-mono font-medium">{config.fps} FPS</span>
-          </div>
+
           <div className="flex justify-between border-b border-white/5 pb-1">
             <span>Độ dài video dự tính:</span>
             <span className="text-white font-mono font-medium">{formatSeconds(duration)}</span>

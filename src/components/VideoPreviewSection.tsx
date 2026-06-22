@@ -361,7 +361,7 @@ export default function VideoPreviewSection({
           }
 
           if (mainGainNodeRef.current && ctxNode) {
-            const mainVol = previewConfig.mainAudioVolume !== undefined ? previewConfig.mainAudioVolume : 100;
+            const mainVol = previewConfig.mainAudioVolume !== undefined ? previewConfig.mainAudioVolume : 200;
             mainGainNodeRef.current.gain.setValueAtTime((mainVol / 100) * targetVolumeFactor, ctxNode.currentTime);
           }
 
@@ -633,7 +633,7 @@ export default function VideoPreviewSection({
     source.buffer = buf;
     
     const mainGain = ctx.createGain();
-    const mainVol = previewConfig.mainAudioVolume !== undefined ? previewConfig.mainAudioVolume : 100;
+    const mainVol = previewConfig.mainAudioVolume !== undefined ? previewConfig.mainAudioVolume : 200;
     mainGain.gain.value = mainVol / 100;
     mainGainNodeRef.current = mainGain;
     
