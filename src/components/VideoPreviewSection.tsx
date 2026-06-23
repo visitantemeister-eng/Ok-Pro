@@ -4,11 +4,12 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Square, Sliders, Volume2, Maximize2, AlertCircle, ToggleLeft, ToggleRight, RefreshCw } from 'lucide-react';
+import { Play, Pause, Square, Sliders, Volume2, Maximize2, AlertCircle, ToggleLeft, ToggleRight, RefreshCw, Sparkles } from 'lucide-react';
 import { SubtitleBlock, CharacterImage, RenderConfig, SubtitlePreset } from '../types';
 import { drawVideoFrame, preloadImage, getHighlightCustomText } from '../utils/videoRenderer';
 import { playTypewriterClick, playBackgroundNoise } from '../utils/audioSynthesizer';
 import { isBehaviorActiveForBlock } from '../utils/behaviorHelper';
+import { SUBTITLE_FONTS } from './SettingsModal';
 
 interface VideoPreviewSectionProps {
   subtitles: SubtitleBlock[];
@@ -22,6 +23,7 @@ interface VideoPreviewSectionProps {
   onPreviewTimeSelect: (time: number) => void;
   bgMusicFiles?: Array<{ id: string; name: string; url: string; file: File; volume?: number }>;
   presets?: SubtitlePreset[];
+  onUpdatePresets?: (newPresets: SubtitlePreset[]) => void;
 }
 
 export default function VideoPreviewSection({
@@ -35,7 +37,8 @@ export default function VideoPreviewSection({
   previewTime,
   onPreviewTimeSelect,
   bgMusicFiles = [],
-  presets = []
+  presets = [],
+  onUpdatePresets
 }: VideoPreviewSectionProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -84,6 +87,41 @@ export default function VideoPreviewSection({
   };
 
   const duration = getMaxDuration();
+
+  const handleRandomizeSubtitlesStyle = () => {
+    if (!presets || presets.length === 0) return;
+    
+    // 1. Choose a random preset/room style from the ones saved
+    const randomPresetIndex = Math.floor(Math.random() * presets.length);
+    const selectedPreset = presets[randomPresetIndex];
+    
+    // 2. Retrieve saved effects to see which groups A, B, C, D have saved designs
+    let availableGroups = ['A', 'B', 'C', 'D'];
+    try {
+      const stored = localStorage.getItem('vsync_saved_effects');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          availableGroups = ['A', 'B', 'C', 'D'].filter(group => 
+            parsed.some((eff: any) => (eff.group || 'A') === group)
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi đọc danh sách hiệu ứng lưu trữ:", e);
+    }
+    const finalGroups = availableGroups.length > 0 ? availableGroups : ['A'];
+    const randomGroup = finalGroups[Math.floor(Math.random() * finalGroups.length)];
+    
+    console.log("Randomizing! Selected saved preset: ", selectedPreset.name, "and selected template group: ", randomGroup);
+    
+    // Select this preset and effect group as active in render config
+    onConfigChange({
+      ...config,
+      activePresetId: selectedPreset.id,
+      activeEffectGroup: randomGroup
+    });
+  };
 
   const videoCacheRef = useRef<Map<string, HTMLVideoElement>>(new Map());
 
@@ -1065,6 +1103,18 @@ export default function VideoPreviewSection({
               >
                 <Square size={14} fill="currentColor" />
               </button>
+              
+              <button
+                type="button"
+                onClick={handleRandomizeSubtitlesStyle}
+                disabled={images.length === 0 || !presets || presets.length === 0}
+                className="ml-2.5 px-3.5 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-pink-600 hover:brightness-110 text-white text-[11px] font-bold uppercase tracking-wide rounded-full flex items-center gap-1.5 shadow-lg shadow-orange-500/10 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                title="Chọn ngẫu nhiên kiểu chữ và phong cách mẫu chữ khác"
+              >
+                <Sparkles size={11} className="text-white animate-bounce" />
+                Random Kiểu Chữ
+              </button>
+
               {!audioFile && (
                 <span className="text-[10px] text-amber-400 font-medium ml-1.5 flex items-center gap-1">
                   <Volume2 size={12} /> Mode: Không nhạc

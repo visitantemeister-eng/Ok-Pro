@@ -146,6 +146,7 @@ const DEFAULT_CONFIG: RenderConfig = {
   subtitleBgOpacity: 0.0,
   enableDynamicSubstyling: false,
   activePresetId: '',
+  activeEffectGroup: '',
   singleKeywordMode: 'no_split',
   dividerStyle: 'none',
   bgEffect: 'lightning',
@@ -818,8 +819,9 @@ function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Remove legacy pre-loaded default preset if present
-          const filtered = parsed.filter(p => p.id !== 'preset_white_yellow_highlight');
+          // Clean out legacy or news style presets that start with preset_news_ or have specific ids
+          let filtered = parsed.filter(p => p.id !== 'preset_white_yellow_highlight' && !p.id.startsWith('preset_news_'));
+
           if (!filtered.some(p => p.id === 'preset_1')) {
             return [defaultPreset, ...filtered];
           }
@@ -2338,6 +2340,7 @@ function App() {
                     onPreviewTimeSelect={setPreviewTime}
                     bgMusicFiles={bgMusicFiles}
                     presets={presets}
+                    onUpdatePresets={setPresets}
                   />
 
                   {/* Exporter Progress Bar & Formats */}

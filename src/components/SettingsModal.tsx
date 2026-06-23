@@ -42,65 +42,95 @@ import {
   Volume2
 } from 'lucide-react';
 
-const SUBTITLE_FONTS = [
+export const SUBTITLE_FONTS = [
   'Alfa Slab One',
+  'Allerta',
+  'Allerta Stencil',
   'Amatic SC',
   'Anton',
   'Archivo Black',
   'Arimo',
   'Bebas Neue',
+  'Big Shoulders Display',
+  'Black Ops One',
+  'Bowlby One SC',
   'Cabin',
+  'Caprasimo',
   'Cardo',
   'Caveat',
   'Changa One',
   'Cinzel',
+  'Cinzel Decorative',
   'Comfortaa',
   'Cormorant Garamond',
   'Crimson Text',
   'Dancing Script',
+  'Days One',
+  'Dela Gothic One',
   'DM Sans',
   'DM Serif Display',
+  'Do Hyeon',
   'Domine',
   'Eczar',
+  'Fjalla One',
   'Frank Ruhl Libre',
   'Fredoka',
+  'Goldman',
   'IBM Plex Sans',
   'IBM Plex Serif',
   'Inter',
   'Itim',
   'Josefin Sans',
   'Kanit',
+  'Krona One',
   'Lexend',
   'Libre Baskerville',
   'Lilita One',
   'Lobster',
+  'Luckiest Guy',
   'Merriweather',
+  'Michroma',
   'Montserrat',
   'Newsreader',
   'Oswald',
   'Outfit',
   'Pacifico',
+  'Passion One',
+  'Pathway Gothic One',
   'Patrick Hand',
   'Patua One',
+  'Paytone One',
   'Permanent Marker',
+  'Platypi',
   'Playfair Display',
   'Playpen Sans',
+  'Poller One',
   'Prata',
   'PT Sans',
   'PT Serif',
   'Quicksand',
+  'Rammetto One',
   'Righteous',
   'Roboto Condensed',
   'Rubik',
+  'Rubik Mono One',
+  'Saira Extra Condensed',
   'Saira Stencil One',
+  'Secular One',
   'Sigmar',
   'Space Grotesk',
   'Spectral',
+  'Squada One',
+  'Staatliches',
+  'Syncopate',
   'Syne',
   'Teko',
   'Ultra',
   'Unbounded',
-  'Vollkorn'
+  'Unica One',
+  'Viga',
+  'Vollkorn',
+  'Zilla Slab Highlight'
 ];
 
 function hexToRgba(hexStr: string, alpha: number) {
@@ -2406,6 +2436,19 @@ export default function SettingsModal({
                                 onChange={(e) => updateLocalPresetField('outlineWidth', parseInt(e.target.value) || 0)}
                                 className="w-full text-xs bg-[#050505] border border-white/10 rounded-lg px-2.5 py-1.5 text-white focus:outline-none font-semibold font-mono"
                               />
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-4 select-none col-span-2">
+                              <input
+                                type="checkbox"
+                                id="preset_uppercase_chk"
+                                checked={!!localEditingPreset.uppercase}
+                                onChange={(e) => updateLocalPresetField('uppercase', e.target.checked)}
+                                className="rounded border-white/10 bg-[#050505] text-blue-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer accent-blue-500"
+                              />
+                              <label htmlFor="preset_uppercase_chk" className="text-[11px] text-zinc-300 font-bold cursor-pointer uppercase tracking-wide">
+                                🔠 Buộc In Hoa hoàn toàn (Dạng News)
+                              </label>
                             </div>
 
                             <div>

@@ -57,6 +57,7 @@ export interface SubtitlePreset {
   subtitleHighlightBgColor?: string;
   syncHighlightTextColor?: boolean;
   presetY?: number;
+  uppercase?: boolean;
 }
 
 export interface RenderConfig {
@@ -82,6 +83,7 @@ export interface RenderConfig {
   // Dynamic Subtitle Presets
   enableDynamicSubstyling: boolean; // Randomly rotate among presets to maximize variety
   activePresetId: string; // Currently active main preset
+  activeEffectGroup?: string; // Currently active effect group (A, B, C, D)
   
   // Subtitle Positions & Drag Drop Coordinates (percentages)
   subtitleX?: number;

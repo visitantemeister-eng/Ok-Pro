@@ -235,17 +235,8 @@ export default function VideoExporter({
     setRenderError(null);
 
     try {
-      // Pick a random subtitle style preset if available as requested
+      // Keep the active preset selected in the preview config
       let exportConfig = config;
-      if (presets && presets.length > 0) {
-        const randomIndex = Math.floor(Math.random() * presets.length);
-        const randomPreset = presets[randomIndex];
-        exportConfig = {
-          ...config,
-          activePresetId: randomPreset.id
-        };
-        console.log("Renderer dynamically picked random preset for export:", randomPreset.name);
-      }
 
       // Force export resolution to always be Full HD (1920x1080) as requested
       exportConfig = {

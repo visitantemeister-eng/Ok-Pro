@@ -13243,15 +13243,20 @@ export function drawVideoFrame(
       }
       ctx.restore();
     } else {
-      // 1. Load style preset: Choose a random style preset (font, colors) deterministically for this video as requested
+      // 1. Load style preset: Use selected active preset if exists, or choose deterministically
       const videoSeed = subtitles.length + Math.round(totalDuration * 10);
       let blockPreset: SubtitlePreset | undefined = undefined;
       if (presets && presets.length > 0) {
-        // Pick a random preset from the available ones
-        const presetSeed = videoSeed + 42;
-        const presetRand = createSeededRandom(String(presetSeed));
-        const presetIdx = Math.floor(presetRand() * presets.length);
-        blockPreset = presets[presetIdx];
+        if (config.activePresetId && config.activePresetId !== 'default') {
+          blockPreset = presets.find(p => p.id === config.activePresetId);
+        }
+        if (!blockPreset) {
+          // Pick a random preset from the available ones
+          const presetSeed = videoSeed + 42;
+          const presetRand = createSeededRandom(String(presetSeed));
+          const presetIdx = Math.floor(presetRand() * presets.length);
+          blockPreset = presets[presetIdx];
+        }
       }
 
       // 2. Load saved effects list from localStorage. Strictly use these saved style layout configurations.
@@ -13288,8 +13293,13 @@ export function drawVideoFrame(
       const finalAvailableGroups = availableGroups.length > 0 ? availableGroups : ['A'];
 
       // 4. Stable, deterministic single-group selection for the entire video to prevent mixing different groups within the same video
-      const groupIdx = Math.abs(videoSeed * 17 + 5) % finalAvailableGroups.length;
-      const chosenVideoGroup = finalAvailableGroups[groupIdx];
+      let chosenVideoGroup: string;
+      if (config.activeEffectGroup && finalAvailableGroups.includes(config.activeEffectGroup)) {
+        chosenVideoGroup = config.activeEffectGroup;
+      } else {
+        const groupIdx = Math.abs(videoSeed * 17 + 5) % finalAvailableGroups.length;
+        chosenVideoGroup = finalAvailableGroups[groupIdx];
+      }
 
       // 5. Retrieve all saved design effects of this group
       let groupEffectsSelected = savedEffectsList.filter((eff: any) => (eff.group || 'A') === chosenVideoGroup);
@@ -14206,6 +14216,9 @@ export function drawAdvancedSubtitle(
   let bgOffsetY = 0;
   let bgProgress = 1.0;
   let textToDraw = isDateHighlightActive ? dateText : text;
+  if (preset && preset.uppercase) {
+    textToDraw = textToDraw.toUpperCase();
+  }
 
   // Entrance active effect transitions
   const effectIn = config.subtitleEffectIn || 'zoom_fade';
