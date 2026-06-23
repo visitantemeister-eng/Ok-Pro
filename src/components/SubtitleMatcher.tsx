@@ -17,6 +17,16 @@ const STOP_WORDS = new Set([
   'a', 'an', 'gh', 'thì', 'là', 'mà', 'gì', 'nào', 'với', 'về', 'để', 'cũng', 'đã', 'đang', 'sẽ', 'được', 'từ', 'qua', 'bởi', 'tại', 'ra', 'vào', 'lên', 'xuống', 'lại', 'thêm'
 ]);
 
+// Fisher-Yates shuffle helper to ensure complete and robust randomness of local image arrays
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 interface SubtitleMatcherProps {
   subtitles: SubtitleBlock[];
   images: CharacterImage[];
@@ -769,7 +779,7 @@ export default function SubtitleMatcher({
           }
         }
       });
-      return matches;
+      return shuffleArray(matches);
     };
 
     const selectRandomImageForKw = (kw: string, excludeIds: Set<string> = new Set()): CharacterImage | null => {
@@ -829,7 +839,7 @@ export default function SubtitleMatcher({
           }
         }
       });
-      return matches;
+      return shuffleArray(matches);
     };
 
     const resolveMediaForKw = (kw: string, preferVideo: boolean, excludeIds: Set<string> = new Set()): { id: string; keyword: string } | null => {
@@ -1002,14 +1012,9 @@ export default function SubtitleMatcher({
         }
       }
 
-      // If we already have AI prediction and there are no direct matched keywords, preserve the AI state!
+      // If we already have AI prediction and there are no direct matched keywords, use the AI matched keywords list to select fresh random media!
       if (block.isAiPredicted && matchedKeywords.length === 0 && block.matchedKeywordsList && block.matchedKeywordsList.length > 0) {
-        resultBlocks.push({
-          ...block,
-          inheritanceDistance: 0,
-          isFallbackBlock: false
-        });
-        continue;
+        matchedKeywords = block.matchedKeywordsList;
       }
 
       let leftImgId: string | undefined = undefined;

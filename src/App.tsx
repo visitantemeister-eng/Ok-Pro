@@ -308,6 +308,16 @@ function isKeywordMatch(subtitleText: string, kw: string): boolean {
   return false;
 }
 
+// Fisher-Yates shuffle helper to ensure complete and robust randomness of local image arrays
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
 }
@@ -1471,7 +1481,7 @@ function App() {
           }
         }
       });
-      return matches;
+      return shuffleArray(matches);
     };
 
     const selectRandomImageForKw = (kw: string, excludeIds: Set<string> = new Set()): CharacterImage | null => {
@@ -1531,7 +1541,7 @@ function App() {
           }
         }
       });
-      return matches;
+      return shuffleArray(matches);
     };
 
     const resolveMediaForKw = (kw: string, preferVideo: boolean, excludeIds: Set<string> = new Set()): { id: string; keyword: string } | null => {
@@ -1741,14 +1751,9 @@ function App() {
         }
       }
 
-      // If we already have AI prediction and there are no direct matched keywords, preserve the AI state!
+      // If we already have AI prediction and there are no direct matched keywords, use the AI matched keywords list to select fresh random media!
       if (block.isAiPredicted && matchedKeywords.length === 0 && block.matchedKeywordsList && block.matchedKeywordsList.length > 0) {
-        resultMerged.push({
-          ...block,
-          inheritanceDistance: 0,
-          isFallbackBlock: false
-        });
-        continue;
+        matchedKeywords = block.matchedKeywordsList;
       }
 
       let leftImgId: string | undefined = undefined;
