@@ -13039,8 +13039,10 @@ export function drawVideoFrame(
       const animP = Math.min(1, elapsed / (duration * 0.45)); // flies in quickly over 45% of duration
       const easeOutP = 1 - Math.pow(1 - animP, 3); // cubic ease out
 
-      // Selection: exactly 1 sticker image using pseudo-random index based on subtitle ID
-      const imgIdx = activeBlock.id % matchedGroup.images.length;
+      // Selection: exactly 1 sticker image using pseudo-random index based on subtitle ID and behaviorSeed
+      const stickerSeed = `${config.behaviorSeed !== undefined ? config.behaviorSeed : 0}_block_${activeBlock.id}_sticker`;
+      const stickerRand = createSeededRandom(stickerSeed);
+      const imgIdx = Math.floor(stickerRand() * matchedGroup.images.length);
       const item = matchedGroup.images[imgIdx];
       const stickerCacheKey = `sticker-${item.id}`;
       let stickerImg = imageCache.get(stickerCacheKey);
@@ -13051,8 +13053,8 @@ export function drawVideoFrame(
       }
 
       if (stickerImg && stickerImg.complete && stickerImg.naturalWidth > 0) {
-        // Decide left or right central area placement randomly based on subtitle block ID
-        const isLeftSide = (activeBlock.id % 2 === 0);
+        // Decide left or right central area placement randomly based on the seeded random
+        const isLeftSide = (stickerRand() < 0.5);
         let currX = 0;
         let currY = 0;
         let bounceAngle = 0;
@@ -13060,11 +13062,8 @@ export function drawVideoFrame(
 
         if (isLeftSide) {
           // Seed unique random location inside LEFT central area
-          const seedVal = activeBlock.id * 53 + 31;
-          let seedRandX = Math.abs(Math.sin(seedVal));
-          seedRandX = seedRandX - Math.floor(seedRandX);
-          let seedRandY = Math.abs(Math.cos(seedVal * 1.5));
-          seedRandY = seedRandY - Math.floor(seedRandY);
+          const seedRandX = stickerRand();
+          const seedRandY = stickerRand();
 
           const targetX = width * (0.15 + 0.3 * seedRandX);
           const targetY = height * (0.2 + 0.5 * seedRandY);
@@ -13081,11 +13080,8 @@ export function drawVideoFrame(
           scaleBounce = (animP >= 1) ? 1.0 + Math.sin(elapsed * 4) * 0.04 : 1.0;
         } else {
           // Seed unique random location inside RIGHT central area
-          const seedVal2 = activeBlock.id * 101 + 61;
-          let seedRandX2 = Math.abs(Math.sin(seedVal2));
-          seedRandX2 = seedRandX2 - Math.floor(seedRandX2);
-          let seedRandY2 = Math.abs(Math.cos(seedVal2 * 2.3));
-          seedRandY2 = seedRandY2 - Math.floor(seedRandY2);
+          const seedRandX2 = stickerRand();
+          const seedRandY2 = stickerRand();
 
           const targetX2 = width * (0.55 + 0.3 * seedRandX2);
           const targetY2 = height * (0.2 + 0.5 * seedRandY2);
