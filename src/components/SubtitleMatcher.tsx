@@ -1060,8 +1060,8 @@ export default function SubtitleMatcher({
 
       if (matchedKeywords.length >= 2) {
         if (isNoSplit) {
-          // Select exactly 1 keyword deterministically
-          const seedIndex = (block.id * 31 + 7) % matchedKeywords.length;
+          // Select exactly 1 keyword randomly
+          const seedIndex = Math.floor(Math.random() * matchedKeywords.length);
           const kw = matchedKeywords[seedIndex];
           const media = resolveMediaForKw(kw, shouldPreferVideo);
           if (media) {

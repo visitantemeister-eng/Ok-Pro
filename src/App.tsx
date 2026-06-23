@@ -754,6 +754,10 @@ function App() {
       if (workingBlock.isManualMatch) {
         return workingBlock;
       }
+      // If we already have a matched image from the state (assigned via initial remap or manual/auto matching), do not override it!
+      if (workingBlock.matchedLeftImageId || workingBlock.matchedRightImageId) {
+        return workingBlock;
+      }
       const directChars = getDirectMatchedCharacterNames(workingBlock.text);
       if (directChars.length > 0) {
         return remapBlockUsingDirectCharsOnly(workingBlock, directChars);
@@ -1800,8 +1804,8 @@ function App() {
 
       if (matchedKeywords.length >= 2) {
         if (isNoSplit) {
-          // Select exactly 1 keyword deterministically
-          const seedIndex = (block.id * 31 + 7) % matchedKeywords.length;
+          // Select exactly 1 keyword randomly
+          const seedIndex = Math.floor(Math.random() * matchedKeywords.length);
           const kw = matchedKeywords[seedIndex];
           const media = resolveMediaForKw(kw, shouldPreferVideo);
           if (media) {
