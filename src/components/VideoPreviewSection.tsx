@@ -1016,15 +1016,24 @@ export default function VideoPreviewSection({
     );
   };
 
+  const activePresetIndex = presets ? presets.findIndex(p => p.id === config.activePresetId) : -1;
+  const styleNumber = activePresetIndex !== -1 ? activePresetIndex + 1 : 1;
+  const effectGroupLetter = config.activeEffectGroup || 'A';
+
   return (
     <div className="bg-[#0E0E11] border border-white/10 rounded-2xl p-6 shadow-xl" id="video-preview-card">
-      <div className="mb-6">
-        <h2 className="text-md font-semibold text-white font-sans tracking-tight">
-          Màn Hình Preview Video
-        </h2>
-        <p className="text-xs text-white/40 mt-0.5">
-          Xem thử hoạt cảnh căn chỉnh thời gian thực (Cấu hình chi tiết chữ &amp; chuyển cảnh trong mục Cài đặt góc trên)
-        </p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div>
+          <h2 className="text-md font-semibold text-white font-sans tracking-tight">
+            Màn Hình Preview Video
+          </h2>
+          <p className="text-xs text-white/40 mt-0.5">
+            Xem thử hoạt cảnh căn chỉnh thời gian thực (Cấu hình chi tiết chữ &amp; chuyển cảnh trong mục Cài đặt góc trên)
+          </p>
+        </div>
+        <div className="px-3.5 py-1.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 rounded-xl text-xs font-bold font-mono shrink-0 self-start sm:self-center">
+          Phong cách #{styleNumber}, MẪU CHỮ {effectGroupLetter}
+        </div>
       </div>
 
       <div className="w-full flex flex-col items-center">
