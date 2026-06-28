@@ -1280,6 +1280,46 @@ function App() {
     setHasProcessed(false);
   };
 
+  const getRandomPresetAndGroup = (currentPresetId?: string, currentGroup?: string) => {
+    // 1. Randomize style preset
+    let randomPresetId = currentPresetId || config.activePresetId;
+    if (presets && presets.length > 0) {
+      if (presets.length > 1) {
+        const otherPresets = presets.filter(p => p.id !== (currentPresetId || config.activePresetId));
+        const randIndex = Math.floor(Math.random() * otherPresets.length);
+        randomPresetId = otherPresets[randIndex].id;
+      } else {
+        randomPresetId = presets[0].id;
+      }
+    }
+
+    // 2. Randomize effect group
+    let availableGroups = ['A', 'B', 'C', 'D'];
+    try {
+      const stored = localStorage.getItem('vsync_saved_effects');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          availableGroups = ['A', 'B', 'C', 'D'].filter(group => 
+            parsed.some((eff: any) => (eff.group || 'A') === group)
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi đọc danh sách hiệu ứng lưu trữ:", e);
+    }
+    const finalGroups = availableGroups.length > 0 ? availableGroups : ['A'];
+    let randomGroup = currentGroup || config.activeEffectGroup;
+    if (finalGroups.length > 1) {
+      const otherGroups = finalGroups.filter(g => g !== (currentGroup || config.activeEffectGroup));
+      randomGroup = otherGroups[Math.floor(Math.random() * otherGroups.length)];
+    } else {
+      randomGroup = finalGroups[0];
+    }
+
+    return { randomPresetId, randomGroup };
+  };
+
   const handleSubtitlesLoaded = (file: File, parsedBlocks: SubtitleBlock[]) => {
     setSrtFile(file);
     setSubtitles(parsedBlocks);
@@ -1287,9 +1327,12 @@ function App() {
     
     // Generate a fresh random seed automatically to shuffle behavior positions and styles completely across videos!
     const newSeed = Math.floor(Math.random() * 1000000);
+    const { randomPresetId, randomGroup } = getRandomPresetAndGroup();
     setConfig(prev => ({
       ...prev,
-      behaviorSeed: newSeed
+      behaviorSeed: newSeed,
+      activePresetId: randomPresetId,
+      activeEffectGroup: randomGroup
     }));
 
     if (images.length > 0) {
@@ -2298,9 +2341,12 @@ function App() {
                     }
                     // Generate a fresh random seed automatically to shuffle behavior positions and styles completely across videos!
                     const newSeed = Math.floor(Math.random() * 1000000);
+                    const { randomPresetId, randomGroup } = getRandomPresetAndGroup();
                     setConfig(prev => ({
                       ...prev,
-                      behaviorSeed: newSeed
+                      behaviorSeed: newSeed,
+                      activePresetId: randomPresetId,
+                      activeEffectGroup: randomGroup
                     }));
 
                     // Trigger match automatically on processing
