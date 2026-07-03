@@ -661,115 +661,90 @@ export function detectDateAndRangeInText(text: string): { startDay: number, endD
   const t = text.trim();
   const lowerText = t.toLowerCase();
 
-  // If the text specifically contains "today" or "hôm nay", return today's exact date as requested.
-  if (lowerText.includes('today') || lowerText.includes('hôm nay')) {
-    const today = new Date();
-    const d = today.getDate();
-    const m = today.getMonth() + 1; // 1-indexed
-    const y = today.getFullYear();
-    return { startDay: d, endDay: d, month: m, year: y };
+  // 1. Không hiển thị nếu phụ đề có tiếng Việt
+  const containsVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/i.test(t);
+  if (containsVietnamese) return null;
+
+  // 2. Không chấp nhận các từ khóa nhạy cảm
+  const blockedWords = ["calendar", "date", "month", "year", "yesterday", "tomorrow", "timeline", "deadline"];
+  for (const word of blockedWords) {
+    if (lowerText.includes(word)) {
+      return null;
+    }
   }
 
-  const monthsEng = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  // 3. Khai báo các tháng bằng tiếng Anh đầy đủ (không viết tắt)
+  const monthsEng = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
   const findEnglishMonth = (str: string): number => {
     for (let i = 0; i < monthsEng.length; i++) {
       if (str.includes(monthsEng[i])) {
-        return (i % 12) + 1;
+        return i + 1;
       }
     }
     return -1;
   };
 
-  // 1. Dạng English Month range: "June 1 to June 19", "June 1 to 19", "June 8-12", "8-12 June"
-  let mEng = findEnglishMonth(lowerText);
-  if (mEng !== -1) {
-    const rangeWordMatch = lowerText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})\s+(?:to|and|\-|đến)\s+(?:(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+)?(\d{1,2})/);
-    if (rangeWordMatch) {
-      const d1 = parseInt(rangeWordMatch[1], 10);
-      const d2 = parseInt(rangeWordMatch[2], 10);
-      const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
-      const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
-      if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31) {
-        return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: mEng, year };
-      }
-    }
+  const monthPattern = "(?:january|february|march|april|may|june|july|august|september|october|november|december)";
 
-    const hyphenMatch = lowerText.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
-    if (hyphenMatch) {
-      const d1 = parseInt(hyphenMatch[1], 10);
-      const d2 = parseInt(hyphenMatch[2], 10);
-      const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
-      const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
-      if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31) {
-        return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: mEng, year };
-      }
-    }
-
-    const singleMatch = lowerText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})\b/);
-    if (singleMatch) {
-      const d = parseInt(singleMatch[1], 10);
-      const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
-      const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
-      if (d >= 1 && d <= 31) {
-        return { startDay: d, endDay: d, month: mEng, year };
-      }
-    }
-
-    const singleMatchReverse = lowerText.match(/\b(\d{1,2})\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b/);
-    if (singleMatchReverse) {
-      const d = parseInt(singleMatchReverse[1], 10);
-      const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
-      const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
-      if (d >= 1 && d <= 31) {
-        return { startDay: d, endDay: d, month: mEng, year };
-      }
+  // A. English Month Range 1: "June 1 to June 19", "June 1 to 19", "June 8-12"
+  const rangePattern1 = new RegExp('(' + monthPattern + ')\\s+(\\d{1,2})\\s*(?:to|and|-|\\s+to\\s+|\\s+and\\s+)\\s*(?:(' + monthPattern + ')\\s+)?(\\d{1,2})', 'i');
+  const match1 = lowerText.match(rangePattern1);
+  if (match1) {
+    const mStr1 = match1[1];
+    const d1 = parseInt(match1[2], 10);
+    const d2 = parseInt(match1[4], 10);
+    const mEng = findEnglishMonth(mStr1);
+    const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
+    const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
+    if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31 && mEng !== -1) {
+      return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: mEng, year };
     }
   }
 
-  // 2. Dạng Tiếng Việt range: "ngày 1 đến ngày 19 tháng 6", "ngày 8-12 tháng 6", "từ 8 đến 12 tháng 6"
-  const vnRangeMatch = lowerText.match(/ngày\s+(\d{1,2})\s*(?:đến|-|to|and)\s*(?:ngày\s+)?(\d{1,2})\s+tháng\s+(\d{1,2})/i);
-  if (vnRangeMatch) {
-    const d1 = parseInt(vnRangeMatch[1], 10);
-    const d2 = parseInt(vnRangeMatch[2], 10);
-    const m = parseInt(vnRangeMatch[3], 10);
-    const yMatch = t.match(/năm\s+(\d{2,4})/i) || t.match(/\b((?:19|20)\d{2})\b/);
-    let year = 2026;
-    if (yMatch) {
-      const yVal = parseInt(yMatch[1], 10);
-      year = yVal < 100 ? 2000 + yVal : yVal;
-    }
-    if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31 && m >= 1 && m <= 12) {
-      return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: m, year };
+  // B. English Month Range 2: "8-12 June"
+  const rangePattern2 = new RegExp('(\\d{1,2})\\s*(?:to|and|-)\\s*(\\d{1,2})\\s+(' + monthPattern + ')', 'i');
+  const match2 = lowerText.match(rangePattern2);
+  if (match2) {
+    const d1 = parseInt(match2[1], 10);
+    const d2 = parseInt(match2[2], 10);
+    const mStr = match2[3];
+    const mEng = findEnglishMonth(mStr);
+    const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
+    const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
+    if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31 && mEng !== -1) {
+      return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: mEng, year };
     }
   }
 
-  const vnRangeNoPrefix = lowerText.match(/(?:từ|ngày)?\s*(\d{1,2})\s*(?:đến|-|-\s*>)\s*(\d{1,2})\s*tháng\s*(\d{1,2})/i);
-  if (vnRangeNoPrefix) {
-    const d1 = parseInt(vnRangeNoPrefix[1], 10);
-    const d2 = parseInt(vnRangeNoPrefix[2], 10);
-    const m = parseInt(vnRangeNoPrefix[3], 10);
-    const yMatch = t.match(/năm\s+(\d{2,4})/i) || t.match(/\b((?:19|20)\d{2})\b/);
-    let year = 2026;
-    if (yMatch) {
-      const yVal = parseInt(yMatch[1], 10);
-      year = yVal < 100 ? 2000 + yVal : yVal;
-    }
-    if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31 && m >= 1 && m <= 12) {
-      return { startDay: Math.min(d1, d2), endDay: Math.max(d1, d2), month: m, year };
+  // C. English Single Day 1: "June 8"
+  const singlePattern1 = new RegExp('(' + monthPattern + ')\\s+(\\d{1,2})\\b', 'i');
+  const match3 = lowerText.match(singlePattern1);
+  if (match3) {
+    const mStr = match3[1];
+    const d = parseInt(match3[2], 10);
+    const mEng = findEnglishMonth(mStr);
+    const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
+    const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
+    if (d >= 1 && d <= 31 && mEng !== -1) {
+      return { startDay: d, endDay: d, month: mEng, year };
     }
   }
 
-  const vnSingleMatch = lowerText.match(/ngày\s+(\d{1,2})(?:\s+tháng\s+(\d{1,2}))?(?:\s+năm\s+(\d{2,4}))?/i);
-  if (vnSingleMatch) {
-    const d = parseInt(vnSingleMatch[1], 10);
-    const m = vnSingleMatch[2] ? parseInt(vnSingleMatch[2], 10) : 6;
-    const y = vnSingleMatch[3] ? parseInt(vnSingleMatch[3], 10) : 2026;
-    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
-      return { startDay: d, endDay: d, month: m, year: y < 100 ? 2000 + y : y };
+  // D. English Single Day 2: "8 June"
+  const singlePattern2 = new RegExp('\\b(\\d{1,2})\\s+(' + monthPattern + ')\\b', 'i');
+  const match4 = lowerText.match(singlePattern2);
+  if (match4) {
+    const d = parseInt(match4[1], 10);
+    const mStr = match4[2];
+    const mEng = findEnglishMonth(mStr);
+    const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
+    const year = yMatch ? parseInt(yMatch[1], 10) : 2026;
+    if (d >= 1 && d <= 31 && mEng !== -1) {
+      return { startDay: d, endDay: d, month: mEng, year };
     }
   }
 
-  // 3. Dạng số dd/mm - dd/mm or dd/mm/yyyy - dd/mm/yyyy
+  // E. Định dạng số: "15/06", "15-06-2026", numeric range "15/06 - 20/06"
   const numericRangeMatch = lowerText.match(/\b(\d{1,2})[/\-.](\d{1,2})\s*(?:đến|-|and|to)\s*(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b/);
   if (numericRangeMatch) {
     const d1 = parseInt(numericRangeMatch[1], 10);
@@ -790,24 +765,6 @@ export function detectDateAndRangeInText(text: string): { startDay: number, endD
     if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
       return { startDay: d, endDay: d, month: m, year: y < 100 ? 2000 + y : y };
     }
-  }
-
-  // 4. Các từ khóa thời gian nhạy cảm khác hoặc số năm có 4 chữ số (ví dụ: 2015, 1995)
-  if (/\b(?:19|20)\d{2}\b/i.test(t) || /ngày|tháng|năm|lịch|calendar|date|month|year|today|yesterday|tomorrow|timeline|deadline|thứ\s+[2-7]|thứ\s+hai|thứ\s+ba|thứ\s+tư|thứ\s+năm|thứ\s+sáu|thứ\s+bảy|chủ\s+nhật|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(t)) {
-    let h = 0;
-    for (let i = 0; i < t.length; i++) {
-      h = (Math.imul(31, h) + t.charCodeAt(i)) | 0;
-    }
-    const d = (Math.abs(h) % 20) + 1;
-    const rangeLen = (Math.abs(h >> 3) % 4);
-    const d2 = d + rangeLen;
-    const m = (Math.abs(h >> 5) % 12) + 1;
-    let y = 2026;
-    const yMatch = t.match(/\b((?:19|20)\d{2})\b/);
-    if (yMatch) {
-      y = parseInt(yMatch[1], 10);
-    }
-    return { startDay: d, endDay: d2, month: m, year: y };
   }
 
   return null;
