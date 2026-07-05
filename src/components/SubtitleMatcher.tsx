@@ -1305,7 +1305,16 @@ export default function SubtitleMatcher({
       }
 
       // Enforce unique character restriction: Keep at most one image/video per unique character name
+      // BUT bypass this when it is a single-keyword block that is configured to be paired
       if (matchedImgIds && matchedImgIds.length > 0) {
+        const blockKws = Array.from(new Set([
+          leftKw,
+          rightKw,
+          ...(matchedKwsList || [])
+        ].filter(Boolean) as string[]));
+        const isSingleKwBlock = blockKws.length <= 1;
+        const shouldBypassCharRestriction = isSingleKwBlock && checkShouldPairForKw(block);
+
         const seenChars = new Set<string>();
         const uniqueIds: string[] = [];
         for (const id of matchedImgIds) {
@@ -1314,7 +1323,7 @@ export default function SubtitleMatcher({
           const charName = img?.characterName || vid?.characterName;
           if (charName && charName !== 'Không có nhân vật' && charName !== 'Tất cả' && charName !== 'Không có') {
             const lower = charName.toLowerCase();
-            if (seenChars.has(lower)) {
+            if (seenChars.has(lower) && !shouldBypassCharRestriction) {
               continue;
             }
             seenChars.add(lower);
