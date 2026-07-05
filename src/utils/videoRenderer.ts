@@ -1779,39 +1779,21 @@ export function drawVideoFrame(
   };
 
   const filterImageIdsForMode = (block: SubtitleBlock, ids: string[]): string[] => {
-    // Keep at most one image/video per unique character name
-    const seenCharsList = new Set<string>();
-    const uniqueCharIds: string[] = [];
-    for (const id of ids) {
-      const img = images.find(x => x.id === id);
-      const vid = (videos || []).find(x => x.id === id);
-      const charName = img?.characterName || vid?.characterName;
-      if (charName && charName !== 'Không có nhân vật' && charName !== 'Tất cả' && charName !== 'Không có') {
-        const lower = charName.toLowerCase();
-        if (seenCharsList.has(lower)) {
-          continue;
-        }
-        seenCharsList.add(lower);
-      }
-      uniqueCharIds.push(id);
-    }
-    const filteredIds = uniqueCharIds;
-
-    if (filteredIds.length <= 1) return filteredIds;
     const mode = config.singleKeywordMode || 'pair';
     if (mode === 'no_split') {
-      return filteredIds.slice(0, 1);
+      return ids.slice(0, 1);
     }
+
     const matchedKws = Array.from(new Set([
       block.matchedLeftKeyword,
       block.matchedRightKeyword,
       ...(block.matchedKeywordsList || [])
     ].filter(Boolean) as string[]));
 
-    // Check if it qualifies as single word / character block
-    if (matchedKws.length === 1 || (block.matchedLeftKeyword && block.matchedLeftKeyword === block.matchedRightKeyword)) {
-      // Determine if we should pair
-      // Use hash of block id, text, and startTime to guarantee unique and stable seed
+    const isSingleKw = matchedKws.length <= 1 || (block.matchedLeftKeyword && block.matchedLeftKeyword === block.matchedRightKeyword);
+
+    if (isSingleKw) {
+      // Determine if we should pair based on selected percentage
       const idStr = String(block.id || '');
       const textStr = String(block.text || '');
       const timeStr = String(block.startTime || '');
@@ -1830,13 +1812,32 @@ export function drawVideoFrame(
       else if (mode === 'percent_75_25') shouldPair = seed < 75;
 
       if (!shouldPair) {
-        return filteredIds.slice(0, 1);
+        return ids.slice(0, 1);
       } else {
-        return filteredIds.slice(0, 2);
+        // We explicitly allow pairing 2 different images of the same character/keyword
+        return ids.slice(0, 2);
       }
     }
+
+    // For multi-keyword segments, we deduplicate by character name to keep layout clean
+    const seenCharsList = new Set<string>();
+    const uniqueCharIds: string[] = [];
+    for (const id of ids) {
+      const img = images.find(x => x.id === id);
+      const vid = (videos || []).find(x => x.id === id);
+      const charName = img?.characterName || vid?.characterName;
+      if (charName && charName !== 'Không có nhân vật' && charName !== 'Tất cả' && charName !== 'Không có') {
+        const lower = charName.toLowerCase();
+        if (seenCharsList.has(lower)) {
+          continue;
+        }
+        seenCharsList.add(lower);
+      }
+      uniqueCharIds.push(id);
+    }
+
     const kwCount = Math.min(matchedKws.length, 4);
-    return filteredIds.slice(0, kwCount);
+    return uniqueCharIds.slice(0, kwCount);
   };
   
   // 1. Solid clear background
