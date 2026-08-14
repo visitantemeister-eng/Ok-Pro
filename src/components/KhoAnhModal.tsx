@@ -736,8 +736,44 @@ export default function KhoAnhModal({
     URL.revokeObjectURL(url);
   };
 
-  const handleExportJson = async () => {
-    if (images.length === 0 && charactersList.filter(c => c !== 'Tất cả' && c !== 'Không có nhân vật').length === 0) {
+  const handleExportConfigJson = () => {
+    const validChars = charactersList.filter(
+      name => name !== 'Tất cả' && name !== 'Không có nhân vật'
+    );
+
+    if (validChars.length === 0 && backgroundNames.length === 0) {
+      alert('Chưa có nhân vật nào để xuất.');
+      return;
+    }
+
+    const exportData = {
+      version: 1,
+      type: 'vsync_characters_config',
+      exportDate: new Date().toISOString(),
+      totalCharacters: validChars.length,
+      characters: validChars,
+      backgroundNames: backgroundNames,
+      dictionary: rules
+    };
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cau_hinh_nhan_vat_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportFullJson = async () => {
+    const validChars = charactersList.filter(
+      name => name !== 'Tất cả' && name !== 'Không có nhân vật'
+    );
+
+    if (images.length === 0 && validChars.length === 0) {
       alert('Thư viện đang trống, chưa có nhân vật hay ảnh nào để xuất.');
       return;
     }
@@ -746,19 +782,34 @@ export default function KhoAnhModal({
     setExportJsonProgress({ current: 0, total: images.length });
 
     try {
-      // Convert all images to Base64
-      const imageRecords: {
-        id: string;
-        name: string;
-        path: string;
-        characterName?: string;
-        keywords: string[];
-        dataUrl: string;
-      }[] = [];
+      const characters = Array.from(
+        new Set([
+          ...createdEmptyChars,
+          ...images.map(img => img.characterName).filter(Boolean)
+        ])
+      ).filter(name => name !== 'Tất cả' && name !== 'Không có nhân vật') as string[];
 
+      // Use BlobPart streaming array to prevent "Invalid string length" V8 crash
+      const blobParts: BlobPart[] = [];
+      blobParts.push('{\n');
+      blobParts.push('  "version": 1,\n');
+      blobParts.push('  "type": "vsync_library_backup",\n');
+      blobParts.push(`  "exportDate": ${JSON.stringify(new Date().toISOString())},\n`);
+      blobParts.push(`  "totalCharacters": ${characters.length},\n`);
+      blobParts.push(`  "characters": ${JSON.stringify(characters)},\n`);
+      blobParts.push(`  "backgroundNames": ${JSON.stringify(backgroundNames)},\n`);
+      blobParts.push(`  "dictionary": ${JSON.stringify(rules)},\n`);
+      blobParts.push(`  "totalImages": ${images.length},\n`);
+      blobParts.push('  "images": [\n');
+
+      // Export images one by one directly into Blob parts to keep memory minimal
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
-        setExportJsonProgress({ current: i + 1, total: images.length });
+        if (i % 20 === 0 || i === images.length - 1) {
+          setExportJsonProgress({ current: i + 1, total: images.length });
+          // Yield to main loop briefly so UI can repaint progress
+          await new Promise(r => setTimeout(r, 0));
+        }
 
         let dataUrl = '';
         if (img.file) {
@@ -766,7 +817,7 @@ export default function KhoAnhModal({
             const reader = new FileReader();
             reader.onload = (e) => resolve((e.target?.result as string) || '');
             reader.onerror = () => resolve('');
-            reader.readAsDataURL(img.file);
+            reader.readAsDataURL(img.file as File);
           });
         } else if (img.url) {
           try {
@@ -783,37 +834,23 @@ export default function KhoAnhModal({
           }
         }
 
-        imageRecords.push({
+        const imgRecord = {
           id: img.id,
           name: img.name,
           path: img.path,
           characterName: img.characterName,
           keywords: img.keywords || [],
           dataUrl
-        });
+        };
+
+        const itemStr = JSON.stringify(imgRecord);
+        const suffix = i === images.length - 1 ? '\n' : ',\n';
+        blobParts.push(`    ${itemStr}${suffix}`);
       }
 
-      const characters = Array.from(
-        new Set([
-          ...createdEmptyChars,
-          ...images.map(img => img.characterName).filter(Boolean)
-        ])
-      ).filter(name => name !== 'Tất cả' && name !== 'Không có nhân vật') as string[];
+      blobParts.push('  ]\n}');
 
-      const exportData = {
-        version: 1,
-        type: 'vsync_library_backup',
-        exportDate: new Date().toISOString(),
-        totalImages: imageRecords.length,
-        totalCharacters: characters.length,
-        characters: characters,
-        backgroundNames: backgroundNames,
-        dictionary: rules,
-        images: imageRecords
-      };
-
-      const jsonStr = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+      const blob = new Blob(blobParts, { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1089,7 +1126,7 @@ export default function KhoAnhModal({
           </div>
 
           {/* Quick Action Tools: JSON & TXT Import/Export */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
             <input
               type="file"
               ref={jsonFileInputRef}
@@ -1098,36 +1135,50 @@ export default function KhoAnhModal({
               onChange={handleImportJson}
             />
 
+            {/* Export Config JSON (Lightweight, instant, best for transferring characters + keywords) */}
             <button
               type="button"
-              onClick={handleExportJson}
-              disabled={isExportingJson}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Xuất toàn bộ kho ảnh & nhân vật ra file JSON để sao lưu hoặc chuyển sang máy khác"
+              onClick={handleExportConfigJson}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Xuất nhanh Danh sách Nhân vật & Từ khóa phụ đề (file .JSON nhẹ, chuyển sang máy khác chỉ 1 click)"
             >
-              {isExportingJson ? <Loader2 size={13} className="animate-spin" /> : <FileJson size={13} />}
-              {isExportingJson ? `Đang xuất ${exportJsonProgress?.current}/${exportJsonProgress?.total}...` : 'Xuất JSON'}
+              <FileJson size={13} />
+              <span>Xuất Cấu Hình JSON</span>
             </button>
 
+            {/* Export Full JSON with Images (Uses streaming chunks to prevent memory crashes) */}
+            <button
+              type="button"
+              onClick={handleExportFullJson}
+              disabled={isExportingJson}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Xuất toàn bộ Thư viện bao gồm cả file ảnh Base64 (dùng công nghệ Blob Stream chống quá tải bộ nhớ)"
+            >
+              {isExportingJson ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              <span>{isExportingJson ? `Đang xuất ${exportJsonProgress?.current}/${exportJsonProgress?.total}...` : 'Xuất Kèm Ảnh (.JSON)'}</span>
+            </button>
+
+            {/* Import JSON (Supports both config JSON and full backup JSON) */}
             <button
               type="button"
               onClick={() => jsonFileInputRef.current?.click()}
               disabled={isImportingJson}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Nhập toàn bộ kho ảnh & nhân vật từ file JSON đã lưu"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Nhập toàn bộ cấu hình nhân vật, từ khóa hoặc ảnh từ file JSON"
             >
               {isImportingJson ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              {isImportingJson ? `Đang nhập ${importJsonProgress?.current}/${importJsonProgress?.total}...` : 'Nhập JSON'}
+              <span>{isImportingJson ? `Đang nhập ${importJsonProgress?.current}/${importJsonProgress?.total}...` : 'Nhập JSON'}</span>
             </button>
 
+            {/* Export TXT */}
             <button
               type="button"
               onClick={handleExportTxt}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
               title="Xuất danh sách nhân vật & từ khóa ra file .TXT"
             >
               <FileText size={13} />
-              Xuất .TXT
+              <span>Xuất .TXT</span>
             </button>
 
             <button
