@@ -26,14 +26,20 @@ import {
   Video as VideoIcon,
   FileJson,
   FileText,
-  Download
+  Download,
+  FolderUp,
+  Layers,
+  FileStack,
+  CheckCircle2,
+  HardDriveDownload,
+  PackageOpen
 } from 'lucide-react';
 
 interface KhoAnhModalProps {
   isOpen: boolean;
   onClose: () => void;
   images: CharacterImage[];
-  onImagesLoaded: (loadedImages: CharacterImage[]) => void;
+  onImagesLoaded: (loadedImages: CharacterImage[], skipRemap?: boolean) => void;
   onDeleteImage: (id: string) => void;
   onDeleteCharacter?: (charName: string) => void;
   dictionary?: DictionaryRule[];
@@ -328,10 +334,36 @@ export default function KhoAnhModal({
   const [confirmDeleteChar, setConfirmDeleteChar] = useState<string | null>(null);
 
   // JSON / TXT Export & Import status
-  const [isExportingJson, setIsExportingJson] = useState(false);
-  const [exportJsonProgress, setExportJsonProgress] = useState<{ current: number; total: number } | null>(null);
+  const [showExportPartsModal, setShowExportPartsModal] = useState(false);
+  const [partBatchSize, setPartBatchSize] = useState<number>(500);
+  const [isExportingParts, setIsExportingParts] = useState(false);
+  const [exportPartsProgress, setExportPartsProgress] = useState<{
+    currentPart: number;
+    totalParts: number;
+    currentImageInPart: number;
+    totalImagesInPart: number;
+    processedTotalImages: number;
+    totalImages: number;
+    statusText: string;
+  } | null>(null);
+  const [generatedPartFiles, setGeneratedPartFiles] = useState<{
+    part: number;
+    totalParts: number;
+    imageCount: number;
+    fileName: string;
+    blobUrl: string;
+    sizeMb: string;
+  }[]>([]);
+
   const [isImportingJson, setIsImportingJson] = useState(false);
-  const [importJsonProgress, setImportJsonProgress] = useState<{ current: number; total: number } | null>(null);
+  const [importBatchProgress, setImportBatchProgress] = useState<{
+    currentFileIndex: number;
+    totalFiles: number;
+    currentFileName: string;
+    currentImageInFile: number;
+    totalImagesInFile: number;
+    totalImagesLoadedSoFar: number;
+  } | null>(null);
 
   // Pending batch state waiting for name input
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -341,6 +373,7 @@ export default function KhoAnhModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const dictFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -768,7 +801,8 @@ export default function KhoAnhModal({
     URL.revokeObjectURL(url);
   };
 
-  const handleExportFullJson = async () => {
+  const handleStartExportParts = async (customBatchSize?: number) => {
+    const batchSize = customBatchSize || partBatchSize || 500;
     const validChars = charactersList.filter(
       name => name !== 'Tất cả' && name !== 'Không có nhân vật'
     );
@@ -778,8 +812,8 @@ export default function KhoAnhModal({
       return;
     }
 
-    setIsExportingJson(true);
-    setExportJsonProgress({ current: 0, total: images.length });
+    setIsExportingParts(true);
+    setGeneratedPartFiles([]);
 
     try {
       const characters = Array.from(
@@ -789,168 +823,339 @@ export default function KhoAnhModal({
         ])
       ).filter(name => name !== 'Tất cả' && name !== 'Không có nhân vật') as string[];
 
-      // Use BlobPart streaming array to prevent "Invalid string length" V8 crash
-      const blobParts: BlobPart[] = [];
-      blobParts.push('{\n');
-      blobParts.push('  "version": 1,\n');
-      blobParts.push('  "type": "vsync_library_backup",\n');
-      blobParts.push(`  "exportDate": ${JSON.stringify(new Date().toISOString())},\n`);
-      blobParts.push(`  "totalCharacters": ${characters.length},\n`);
-      blobParts.push(`  "characters": ${JSON.stringify(characters)},\n`);
-      blobParts.push(`  "backgroundNames": ${JSON.stringify(backgroundNames)},\n`);
-      blobParts.push(`  "dictionary": ${JSON.stringify(rules)},\n`);
-      blobParts.push(`  "totalImages": ${images.length},\n`);
-      blobParts.push('  "images": [\n');
+      const totalImages = images.length;
+      const totalParts = Math.max(1, Math.ceil(totalImages / batchSize));
 
-      // Export images one by one directly into Blob parts to keep memory minimal
-      for (let i = 0; i < images.length; i++) {
-        const img = images[i];
-        if (i % 20 === 0 || i === images.length - 1) {
-          setExportJsonProgress({ current: i + 1, total: images.length });
-          // Yield to main loop briefly so UI can repaint progress
-          await new Promise(r => setTimeout(r, 0));
-        }
+      const newPartsList: {
+        part: number;
+        totalParts: number;
+        imageCount: number;
+        fileName: string;
+        blobUrl: string;
+        sizeMb: string;
+      }[] = [];
 
-        let dataUrl = '';
-        if (img.file) {
-          dataUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve((e.target?.result as string) || '');
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(img.file as File);
-          });
-        } else if (img.url) {
-          try {
-            const resp = await fetch(img.url);
-            const blob = await resp.blob();
+      for (let p = 0; p < totalParts; p++) {
+        const partNum = p + 1;
+        const startIdx = p * batchSize;
+        const endIdx = Math.min(startIdx + batchSize, totalImages);
+        const sliceImages = images.slice(startIdx, endIdx);
+
+        setExportPartsProgress({
+          currentPart: partNum,
+          totalParts,
+          currentImageInPart: 0,
+          totalImagesInPart: sliceImages.length,
+          processedTotalImages: startIdx,
+          totalImages,
+          statusText: `Đang xử lý Part ${partNum}/${totalParts} (Ảnh ${startIdx + 1} - ${endIdx})...`
+        });
+
+        // Convert sliceImages to Base64 records
+        const imageRecords: {
+          id: string;
+          name: string;
+          path: string;
+          characterName?: string;
+          keywords: string[];
+          dataUrl: string;
+        }[] = [];
+
+        for (let i = 0; i < sliceImages.length; i++) {
+          const img = sliceImages[i];
+          if (i % 15 === 0 || i === sliceImages.length - 1) {
+            setExportPartsProgress({
+              currentPart: partNum,
+              totalParts,
+              currentImageInPart: i + 1,
+              totalImagesInPart: sliceImages.length,
+              processedTotalImages: startIdx + i + 1,
+              totalImages,
+              statusText: `Part ${partNum}/${totalParts}: Đang nén ảnh ${i + 1}/${sliceImages.length}...`
+            });
+            await new Promise(r => setTimeout(r, 0));
+          }
+
+          let dataUrl = '';
+          if (img.file) {
             dataUrl = await new Promise<string>((resolve) => {
               const reader = new FileReader();
               reader.onload = (e) => resolve((e.target?.result as string) || '');
               reader.onerror = () => resolve('');
-              reader.readAsDataURL(blob);
+              reader.readAsDataURL(img.file as File);
             });
-          } catch (e) {
-            console.error('Lỗi đọc dữ liệu ảnh:', e);
+          } else if (img.url) {
+            try {
+              const resp = await fetch(img.url);
+              const blob = await resp.blob();
+              dataUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve((e.target?.result as string) || '');
+                reader.onerror = () => resolve('');
+                reader.readAsDataURL(blob);
+              });
+            } catch (e) {
+              console.error('Lỗi đọc dữ liệu ảnh:', e);
+            }
           }
+
+          imageRecords.push({
+            id: img.id,
+            name: img.name,
+            path: img.path,
+            characterName: img.characterName,
+            keywords: img.keywords || [],
+            dataUrl
+          });
         }
 
-        const imgRecord = {
-          id: img.id,
-          name: img.name,
-          path: img.path,
-          characterName: img.characterName,
-          keywords: img.keywords || [],
-          dataUrl
+        const partExportData = {
+          version: 1,
+          type: 'vsync_library_backup_part',
+          exportDate: new Date().toISOString(),
+          part: partNum,
+          totalParts,
+          partImagesCount: imageRecords.length,
+          totalImagesCount: totalImages,
+          characters,
+          backgroundNames,
+          dictionary: rules,
+          images: imageRecords
         };
 
-        const itemStr = JSON.stringify(imgRecord);
-        const suffix = i === images.length - 1 ? '\n' : ',\n';
-        blobParts.push(`    ${itemStr}${suffix}`);
+        const jsonStr = JSON.stringify(partExportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+        const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
+        const fileName = `kho_anh_part_${String(partNum).padStart(2, '0')}_of_${String(totalParts).padStart(2, '0')}.json`;
+        const blobUrl = URL.createObjectURL(blob);
+
+        const partItem = {
+          part: partNum,
+          totalParts,
+          imageCount: imageRecords.length,
+          fileName,
+          blobUrl,
+          sizeMb
+        };
+
+        newPartsList.push(partItem);
+        setGeneratedPartFiles([...newPartsList]);
+
+        // Auto trigger download for this part
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Pause briefly so browser download manager doesn't stutter and RAM is cleared
+        if (partNum < totalParts) {
+          await new Promise(r => setTimeout(r, 600));
+        }
       }
 
-      blobParts.push('  ]\n}');
-
-      const blob = new Blob(blobParts, { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `thu_vien_anh_nhan_vat_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setExportPartsProgress(null);
     } catch (err) {
-      console.error('Lỗi khi xuất file JSON:', err);
-      alert('Có lỗi khi xuất file JSON: ' + (err as Error).message);
+      console.error('Lỗi khi xuất Part JSON:', err);
+      alert('Có lỗi khi xuất file Part JSON: ' + (err as Error).message);
     } finally {
-      setIsExportingJson(false);
-      setExportJsonProgress(null);
+      setIsExportingParts(false);
     }
   };
 
-  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFolderUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
+    const imageRegex = /\.(png|jpe?g|webp|gif|bmp)$/i;
+    const imageFiles: File[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      if (imageRegex.test(files[i].name)) {
+        imageFiles.push(files[i]);
+      }
+    }
+
+    if (imageFiles.length === 0) {
+      alert('Không tìm thấy tệp ảnh hợp lệ trong thư mục được chọn.');
+      e.target.value = '';
+      return;
+    }
+
+    startTransition(async () => {
+      setOptimizeProgress({ current: 0, total: imageFiles.length });
+      const loaded: CharacterImage[] = [];
+      const detectedCharacters = new Set<string>();
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        const path = file.webkitRelativePath || file.name;
+        const id = `img_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
+
+        let charName: string | undefined = undefined;
+        if (file.webkitRelativePath) {
+          const parts = file.webkitRelativePath.split('/');
+          if (parts.length >= 2) {
+            // e.g. "Characters/Ava/001.png" -> parts[parts.length - 2] is "Ava"
+            const potentialName = parts[parts.length - 2].trim();
+            if (potentialName && potentialName.toLowerCase() !== 'images' && potentialName.toLowerCase() !== 'anh') {
+              charName = potentialName;
+            }
+          }
+        }
+
+        if (!charName && selectedChar !== 'Tất cả' && selectedChar !== 'Không có nhân vật') {
+          charName = selectedChar;
+        }
+
+        if (charName) {
+          detectedCharacters.add(charName);
+        }
+
+        const keywords = extractKeywords(file.name, path);
+        if (charName) {
+          charName.split(/\s+/).forEach(word => {
+            if (word.length >= 2 && !STOP_WORDS.has(word.toLowerCase())) {
+              keywords.push(word);
+            }
+          });
+        }
+
+        const { blob, url } = await compressAndResizeImage(file);
+        const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
+
+        loaded.push({
+          id,
+          name: file.name,
+          path,
+          url,
+          file: compressedFile,
+          keywords: Array.from(new Set(keywords)),
+          characterName: charName
+        });
+
+        if (i % 20 === 0 || i === imageFiles.length - 1) {
+          setOptimizeProgress({ current: i + 1, total: imageFiles.length });
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      if (detectedCharacters.size > 0) {
+        setCreatedEmptyChars(prev => {
+          const updated = Array.from(new Set([...prev, ...Array.from(detectedCharacters)]));
+          try {
+            localStorage.setItem('vsync_empty_chars', JSON.stringify(updated));
+          } catch (err) {}
+          return updated;
+        });
+      }
+
+      if (loaded.length > 0) {
+        onImagesLoaded(loaded);
+        alert(`✅ Đã nạp thành công ${loaded.length} ảnh từ thư mục! Tự động nhận diện ${detectedCharacters.size} danh mục nhân vật.`);
+      }
+      setOptimizeProgress(null);
+      e.target.value = '';
+    });
+  };
+
+  const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFiles = e.target.files;
+    if (!rawFiles || rawFiles.length === 0) return;
+
+    const files: File[] = Array.from(rawFiles);
     setIsImportingJson(true);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const content = event.target?.result as string;
-        if (!content) throw new Error('File rỗng.');
 
+    let totalImportedImagesCount = 0;
+    let totalImportedRulesCount = 0;
+    const restoredCharsSet = new Set<string>();
+    const restoredBgsSet = new Set<string>(backgroundNames);
+    const restoredRulesMap = new Map<string, DictionaryRule>();
+    rules.forEach(r => {
+      restoredRulesMap.set(`${r.keyword.toLowerCase()}__${r.characterName.toLowerCase()}`, r);
+    });
+
+    try {
+      for (let f = 0; f < files.length; f++) {
+        const file = files[f];
+
+        setImportBatchProgress({
+          currentFileIndex: f + 1,
+          totalFiles: files.length,
+          currentFileName: file.name,
+          currentImageInFile: 0,
+          totalImagesInFile: 0,
+          totalImagesLoadedSoFar: totalImportedImagesCount
+        });
+
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => resolve((evt.target?.result as string) || '');
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+
+        if (!content) continue;
         const data = JSON.parse(content);
-        if (!data || typeof data !== 'object') {
-          throw new Error('Định dạng JSON không hợp lệ.');
-        }
+        if (!data || typeof data !== 'object') continue;
 
-        // 1. Restore Characters
-        let restoredChars: string[] = [];
+        // 1. Merge Characters
         if (Array.isArray(data.characters)) {
-          restoredChars = data.characters.filter((c: any) => typeof c === 'string' && c.trim());
-          if (restoredChars.length > 0) {
-            setCreatedEmptyChars(prev => {
-              const updated = Array.from(new Set([...prev, ...restoredChars]));
-              try {
-                localStorage.setItem('vsync_empty_chars', JSON.stringify(updated));
-              } catch (e) {}
-              return updated;
-            });
-          }
+          data.characters.forEach((c: any) => {
+            if (typeof c === 'string' && c.trim() && c !== 'Tất cả' && c !== 'Không có nhân vật') {
+              restoredCharsSet.add(c.trim());
+            }
+          });
         }
 
-        // 2. Restore Backgrounds
-        if (Array.isArray(data.backgroundNames) && onUpdateBackgroundNames) {
-          const validBgs = data.backgroundNames.filter((b: any) => typeof b === 'string' && b.trim());
-          if (validBgs.length > 0) {
-            const combinedBgs = Array.from(new Set([...backgroundNames, ...validBgs]));
-            onUpdateBackgroundNames(combinedBgs);
-          }
+        // 2. Merge Backgrounds
+        if (Array.isArray(data.backgroundNames)) {
+          data.backgroundNames.forEach((b: any) => {
+            if (typeof b === 'string' && b.trim()) {
+              restoredBgsSet.add(b.trim());
+            }
+          });
         }
 
-        // 3. Restore Dictionary
-        let restoredRulesCount = 0;
-        if (Array.isArray(data.dictionary) && onUpdateDictionary) {
-          const newRules: DictionaryRule[] = [];
+        // 3. Merge Dictionary
+        if (Array.isArray(data.dictionary)) {
           data.dictionary.forEach((r: any) => {
             if (r && r.keyword && r.characterName) {
               const kwParts = String(r.keyword).split(/[,;]/).map((k: string) => k.trim()).filter(Boolean);
               kwParts.forEach((kw: string) => {
-                newRules.push({
-                  id: r.id || `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
-                  keyword: kw,
-                  characterName: String(r.characterName).trim()
-                });
+                const charName = String(r.characterName).trim();
+                const key = `${kw.toLowerCase()}__${charName.toLowerCase()}`;
+                if (!restoredRulesMap.has(key)) {
+                  restoredRulesMap.set(key, {
+                    id: r.id || `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
+                    keyword: kw,
+                    characterName: charName
+                  });
+                  totalImportedRulesCount++;
+                }
               });
             }
           });
-
-          if (newRules.length > 0) {
-            const updatedRules = [...rules];
-            newRules.forEach((newR) => {
-              const idx = updatedRules.findIndex(
-                (r) => r.keyword.toLowerCase() === newR.keyword.toLowerCase() && r.characterName.toLowerCase() === newR.characterName.toLowerCase()
-              );
-              if (idx >= 0) {
-                updatedRules[idx] = newR;
-              } else {
-                updatedRules.push(newR);
-              }
-            });
-            onUpdateDictionary(updatedRules);
-            restoredRulesCount = newRules.length;
-          }
         }
 
-        // 4. Restore Images
-        let restoredImagesCount = 0;
+        // 4. Reconstruct and stream images for this specific file/part
         if (Array.isArray(data.images) && data.images.length > 0) {
           const reconstructedImages: CharacterImage[] = [];
-          setImportJsonProgress({ current: 0, total: data.images.length });
 
           for (let i = 0; i < data.images.length; i++) {
             const imgData = data.images[i];
-            setImportJsonProgress({ current: i + 1, total: data.images.length });
+            if (i % 20 === 0 || i === data.images.length - 1) {
+              setImportBatchProgress({
+                currentFileIndex: f + 1,
+                totalFiles: files.length,
+                currentFileName: file.name,
+                currentImageInFile: i + 1,
+                totalImagesInFile: data.images.length,
+                totalImagesLoadedSoFar: totalImportedImagesCount + reconstructedImages.length
+              });
+              await new Promise(r => setTimeout(r, 0));
+            }
 
             if (imgData.dataUrl && typeof imgData.dataUrl === 'string' && imgData.dataUrl.startsWith('data:')) {
               try {
@@ -967,14 +1172,19 @@ export default function KhoAnhModal({
                 const imageFile = new File([u8arr], fileName, { type: mime });
                 const blobUrl = URL.createObjectURL(imageFile);
 
+                const charName = imgData.characterName ? String(imgData.characterName).trim() : undefined;
+                if (charName && charName !== 'Tất cả' && charName !== 'Không có nhân vật') {
+                  restoredCharsSet.add(charName);
+                }
+
                 reconstructedImages.push({
                   id: imgData.id || `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${i}`,
                   name: fileName,
                   path: imgData.path || fileName,
                   url: blobUrl,
                   file: imageFile,
-                  keywords: Array.isArray(imgData.keywords) ? imgData.keywords : [imgData.characterName || ''],
-                  characterName: imgData.characterName || undefined
+                  keywords: Array.isArray(imgData.keywords) ? imgData.keywords : [charName || ''],
+                  characterName: charName
                 });
               } catch (e) {
                 console.error('Lỗi giải mã ảnh dataUrl:', e);
@@ -983,26 +1193,52 @@ export default function KhoAnhModal({
           }
 
           if (reconstructedImages.length > 0) {
-            onImagesLoaded(reconstructedImages);
-            restoredImagesCount = reconstructedImages.length;
+            onImagesLoaded(reconstructedImages, true);
+            totalImportedImagesCount += reconstructedImages.length;
           }
         }
 
-        if (restoredChars.length > 0) {
-          setSelectedChar(restoredChars[0]);
-        }
-
-        alert(`✅ Nhập JSON thành công!\n- ${restoredChars.length} nhân vật\n- ${restoredRulesCount} từ khóa phụ đề\n- ${restoredImagesCount} ảnh thư viện`);
-      } catch (err) {
-        console.error('Lỗi khi nhập JSON:', err);
-        alert('Lỗi nhập JSON: ' + (err as Error).message);
-      } finally {
-        setIsImportingJson(false);
-        setImportJsonProgress(null);
-        e.target.value = '';
+        // Allow Garbage Collector to clean memory before next file
+        await new Promise(r => setTimeout(r, 80));
       }
-    };
-    reader.readAsText(file);
+
+      // Update state for characters, backgrounds, rules
+      if (restoredCharsSet.size > 0) {
+        const charList = Array.from(restoredCharsSet);
+        setCreatedEmptyChars(prev => {
+          const updated = Array.from(new Set([...prev, ...charList]));
+          try {
+            localStorage.setItem('vsync_empty_chars', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+        if (selectedChar === 'Tất cả' || selectedChar === 'Không có nhân vật') {
+          setSelectedChar(charList[0]);
+        }
+      }
+
+      if (restoredBgsSet.size > 0 && onUpdateBackgroundNames) {
+        onUpdateBackgroundNames(Array.from(restoredBgsSet));
+      }
+
+      if (onUpdateDictionary) {
+        onUpdateDictionary(Array.from(restoredRulesMap.values()));
+      }
+
+      alert(
+        `✅ ĐÃ NHẬP THÀNH CÔNG ${files.length} TỆP JSON!\n\n` +
+        `- Tổng số ảnh đã nạp vào kho: ${totalImportedImagesCount.toLocaleString()} ảnh\n` +
+        `- Danh sách nhân vật: ${restoredCharsSet.size} nhân vật\n` +
+        `- Danh mục từ khóa phụ đề: ${restoredRulesMap.size} quy tắc liên kết`
+      );
+    } catch (err) {
+      console.error('Lỗi khi nạp danh sách JSON:', err);
+      alert('Lỗi nạp tệp JSON: ' + (err as Error).message);
+    } finally {
+      setIsImportingJson(false);
+      setImportBatchProgress(null);
+      e.target.value = '';
+    }
   };
 
   const handleFileUploadTriggered = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1127,13 +1363,35 @@ export default function KhoAnhModal({
 
           {/* Quick Action Tools: JSON & TXT Import/Export */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            {/* JSON Input - Supports MULTIPLE files for sequential Part import */}
             <input
               type="file"
               ref={jsonFileInputRef}
               accept=".json,application/json"
+              multiple
               className="hidden"
               onChange={handleImportJson}
             />
+
+            {/* Folder Input */}
+            <input
+              type="file"
+              ref={folderInputRef}
+              {...({ webkitdirectory: "", directory: "", multiple: true } as any)}
+              className="hidden"
+              onChange={handleFolderUpload}
+            />
+
+            {/* Direct Folder Import */}
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Chọn thư mục chứa ảnh trên máy tính (tự động phân loại theo thư mục con nhân vật, không sợ tràn RAM)"
+            >
+              <FolderUp size={13} />
+              <span>Nhập Thư Mục Ảnh</span>
+            </button>
 
             {/* Export Config JSON (Lightweight, instant, best for transferring characters + keywords) */}
             <button
@@ -1146,28 +1404,27 @@ export default function KhoAnhModal({
               <span>Xuất Cấu Hình JSON</span>
             </button>
 
-            {/* Export Full JSON with Images (Uses streaming chunks to prevent memory crashes) */}
+            {/* Export JSON split into Parts (Anti-Out of Memory) */}
             <button
               type="button"
-              onClick={handleExportFullJson}
-              disabled={isExportingJson}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Xuất toàn bộ Thư viện bao gồm cả file ảnh Base64 (dùng công nghệ Blob Stream chống quá tải bộ nhớ)"
+              onClick={() => setShowExportPartsModal(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 text-indigo-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Xuất kho ảnh chia thành nhiều Part nhỏ (chống lỗi tràn bộ nhớ RAM khi chuyển sang máy khác)"
             >
-              {isExportingJson ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              <span>{isExportingJson ? `Đang xuất ${exportJsonProgress?.current}/${exportJsonProgress?.total}...` : 'Xuất Kèm Ảnh (.JSON)'}</span>
+              <Layers size={13} />
+              <span>Xuất JSON (Chia Part)</span>
             </button>
 
-            {/* Import JSON (Supports both config JSON and full backup JSON) */}
+            {/* Import JSON (Supports selecting 1 or MULTIPLE Part files at once) */}
             <button
               type="button"
               onClick={() => jsonFileInputRef.current?.click()}
               disabled={isImportingJson}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Nhập toàn bộ cấu hình nhân vật, từ khóa hoặc ảnh từ file JSON"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/50 text-purple-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
+              title="Nhập cấu hình hoặc chọn toàn bộ các file Part JSON cùng lúc (hệ thống tự động nạp tuần tự chống tràn RAM)"
             >
               {isImportingJson ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              <span>{isImportingJson ? `Đang nhập ${importJsonProgress?.current}/${importJsonProgress?.total}...` : 'Nhập JSON'}</span>
+              <span>{isImportingJson ? `Đang nạp Part ${importBatchProgress?.currentFileIndex}/${importBatchProgress?.totalFiles}...` : 'Nhập JSON (Các Part)'}</span>
             </button>
 
             {/* Export TXT */}
@@ -1847,6 +2104,243 @@ export default function KhoAnhModal({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xuất JSON Chia Nhiều Part */}
+      {showExportPartsModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#121217] border border-white/15 rounded-2xl w-full max-w-xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-500/15 text-indigo-400 rounded-xl">
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-tight">Xuất JSON Chia Nhiều Part (Chống Tràn RAM)</h3>
+                  <p className="text-[11px] text-white/40">Chia nhỏ kho ảnh thành các tệp an toàn (~20MB) để chuyển sang máy khác</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isExportingParts}
+                onClick={() => {
+                  setShowExportPartsModal(false);
+                  setGeneratedPartFiles([]);
+                  setExportPartsProgress(null);
+                }}
+                className="p-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Info Metrics */}
+            <div className="grid grid-cols-3 gap-2 py-1">
+              <div className="bg-white/5 p-2.5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-white/40 uppercase block">Tổng số ảnh</span>
+                <span className="text-sm font-bold text-white">{images.length.toLocaleString()}</span>
+              </div>
+              <div className="bg-white/5 p-2.5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-white/40 uppercase block">Số ảnh mỗi Part</span>
+                <span className="text-sm font-bold text-indigo-300">{partBatchSize} ảnh</span>
+              </div>
+              <div className="bg-white/5 p-2.5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-white/40 uppercase block">Số Part dự kiến</span>
+                <span className="text-sm font-bold text-emerald-400">
+                  {Math.max(1, Math.ceil(images.length / partBatchSize))} Part
+                </span>
+              </div>
+            </div>
+
+            {/* Batch Size Selector */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-white/60 block">Chọn kích cỡ mỗi Part:</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {[
+                  { size: 300, label: '300 ảnh', note: '~15 MB' },
+                  { size: 500, label: '500 ảnh', note: '~25 MB (Khuyên dùng)' },
+                  { size: 800, label: '800 ảnh', note: '~40 MB' },
+                  { size: 1000, label: '1000 ảnh', note: '~50 MB' }
+                ].map(opt => (
+                  <button
+                    key={opt.size}
+                    type="button"
+                    disabled={isExportingParts}
+                    onClick={() => setPartBatchSize(opt.size)}
+                    className={`px-2 py-2 rounded-xl text-left border transition-all ${
+                      partBatchSize === opt.size
+                        ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-sm'
+                        : 'bg-white/5 border-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{opt.label}</div>
+                    <div className="text-[10px] text-white/40">{opt.note}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Progress Display */}
+            {isExportingParts && exportPartsProgress && (
+              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-indigo-300 font-bold flex items-center gap-1.5">
+                    <Loader2 size={13} className="animate-spin text-indigo-400" />
+                    {exportPartsProgress.statusText}
+                  </span>
+                  <span className="text-white/60 text-[11px]">
+                    Part {exportPartsProgress.currentPart} / {exportPartsProgress.totalParts}
+                  </span>
+                </div>
+
+                {/* Progress bar for all images */}
+                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-indigo-500 to-sky-400 h-full transition-all duration-150"
+                    style={{
+                      width: `${(exportPartsProgress.processedTotalImages / (exportPartsProgress.totalImages || 1)) * 100}%`
+                    }}
+                  />
+                </div>
+
+                <div className="flex justify-between text-[10px] text-white/40">
+                  <span>Tiến độ toàn bộ: {exportPartsProgress.processedTotalImages} / {exportPartsProgress.totalImages} ảnh</span>
+                  <span>Đã tải về trình duyệt tự động...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Generated Parts Download List */}
+            {generatedPartFiles.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-white/70">
+                  <span className="flex items-center gap-1 text-emerald-400">
+                    <CheckCircle2 size={13} />
+                    Đã tạo thành công {generatedPartFiles.length} / {Math.max(1, Math.ceil(images.length / partBatchSize))} Part
+                  </span>
+                  <span className="text-white/40 text-[10px]">Trình duyệt đã tự động tải về</span>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {generatedPartFiles.map((partItem) => (
+                    <div
+                      key={partItem.part}
+                      className="flex items-center justify-between bg-white/5 border border-white/5 px-3 py-1.5 rounded-lg text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileStack size={13} className="text-indigo-400 shrink-0" />
+                        <span className="font-mono text-[11px] text-white truncate">{partItem.fileName}</span>
+                        <span className="text-[10px] text-white/40 shrink-0">({partItem.imageCount} ảnh • {partItem.sizeMb} MB)</span>
+                      </div>
+                      <a
+                        href={partItem.blobUrl}
+                        download={partItem.fileName}
+                        className="flex items-center gap-1 text-[10px] bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 px-2 py-1 rounded transition-colors shrink-0 font-medium"
+                      >
+                        <Download size={10} />
+                        Tải lại
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* User instructions */}
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-3 text-[11px] text-sky-200/90 leading-relaxed">
+              <strong className="text-sky-300 block mb-0.5 font-bold">💡 Cách nhập vào máy tính khác cực kỳ đơn giản:</strong>
+              1. Sao chép tất cả các tệp <code className="bg-black/30 px-1 py-0.5 rounded text-white font-mono">kho_anh_part_XX.json</code> sang máy mới.<br />
+              2. Bấm nút <strong className="text-white">"Nhập JSON (Các Part)"</strong> trên thanh công cụ và giữ phím <strong className="text-white">Ctrl + A</strong> (hoặc Shift) để chọn tất cả các file Part cùng lúc.<br />
+              3. Hệ thống sẽ tự động nạp tuần tự từng Part một cách nhẹ nhàng mà không bao giờ bị lỗi tràn RAM!
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+              <button
+                type="button"
+                disabled={isExportingParts}
+                onClick={() => {
+                  setShowExportPartsModal(false);
+                  setGeneratedPartFiles([]);
+                  setExportPartsProgress(null);
+                }}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-semibold text-white/60 transition-colors"
+              >
+                {generatedPartFiles.length > 0 && !isExportingParts ? 'Đóng' : 'Hủy'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isExportingParts || images.length === 0}
+                onClick={() => handleStartExportParts()}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 transition-colors shadow-lg shadow-indigo-600/30"
+              >
+                {isExportingParts ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" />
+                    Đang xuất các Part...
+                  </>
+                ) : (
+                  <>
+                    <HardDriveDownload size={14} />
+                    Bắt đầu Xuất & Tải về toàn bộ Part
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay Hiển thị Tiến độ Nhập JSON tuần tự */}
+      {isImportingJson && importBatchProgress && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#121217] border border-purple-500/30 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-purple-500/20 text-purple-400 rounded-xl">
+                <PackageOpen size={22} className="animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-white uppercase tracking-tight">Đang Nhập JSON Tuần Tự</h3>
+                <p className="text-[11px] text-white/40">Giải phóng bộ nhớ liên tục để chống tràn RAM</p>
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/5 rounded-xl p-3.5 space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-purple-300 font-bold">
+                  Tệp {importBatchProgress.currentFileIndex} / {importBatchProgress.totalFiles}
+                </span>
+                <span className="text-white/40 text-[10px] truncate max-w-[200px]">
+                  {importBatchProgress.currentFileName}
+                </span>
+              </div>
+
+              {/* Progress for current file */}
+              <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-100"
+                  style={{
+                    width: importBatchProgress.totalImagesInFile > 0
+                      ? `${(importBatchProgress.currentImageInFile / importBatchProgress.totalImagesInFile) * 100}%`
+                      : '100%'
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-between text-[10px] text-white/50">
+                <span>Giải mã ảnh: {importBatchProgress.currentImageInFile} / {importBatchProgress.totalImagesInFile || '...'}</span>
+                <span>Đã nạp: <strong className="text-emerald-400">{importBatchProgress.totalImagesLoadedSoFar.toLocaleString()}</strong> ảnh</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-white/40 justify-center">
+              <Loader2 size={12} className="animate-spin text-purple-400" />
+              <span>Vui lòng giữ nguyên cửa sổ này trong khi hệ thống nạp dữ liệu...</span>
             </div>
           </div>
         </div>
