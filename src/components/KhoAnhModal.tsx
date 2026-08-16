@@ -387,7 +387,7 @@ export default function KhoAnhModal({
         if (rule.keyword && (rule.keyword.includes(',') || rule.keyword.includes(';'))) {
           const parts = rule.keyword.split(/[,;]/).map(k => k.trim()).filter(Boolean);
           parts.forEach(part => {
-            if (part && !sanitized.some(s => s.keyword.toLowerCase() === part.toLowerCase() && s.characterName.toLowerCase() === rule.characterName.toLowerCase())) {
+            if (part && !sanitized.some(s => s.keyword === part && s.characterName.trim().toLowerCase() === rule.characterName.trim().toLowerCase())) {
               sanitized.push({
                 id: `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
                 keyword: part,
@@ -396,7 +396,9 @@ export default function KhoAnhModal({
             }
           });
         } else if (rule.keyword && rule.characterName) {
-          sanitized.push(rule);
+          if (!sanitized.some(s => s.keyword === rule.keyword && s.characterName.trim().toLowerCase() === rule.characterName.trim().toLowerCase())) {
+            sanitized.push(rule);
+          }
         }
       });
       onUpdateDictionary(sanitized);
@@ -453,10 +455,8 @@ export default function KhoAnhModal({
       if (newRules.length > 0) {
         const updated = [...rules];
         newRules.forEach((newR) => {
-          const idx = updated.findIndex((r) => r.keyword.toLowerCase() === newR.keyword.toLowerCase() && r.characterName.toLowerCase() === newR.characterName.toLowerCase());
-          if (idx >= 0) {
-            updated[idx] = newR; // overwrite duplicate keywords
-          } else {
+          const exists = updated.some((r) => r.keyword === newR.keyword && r.characterName.trim().toLowerCase() === newR.characterName.trim().toLowerCase());
+          if (!exists) {
             updated.push(newR);
           }
         });
@@ -481,16 +481,13 @@ export default function KhoAnhModal({
 
     const updated = [...rules];
     kws.forEach(kw => {
-      const idx = updated.findIndex((r) => r.keyword.toLowerCase() === kw.toLowerCase() && r.characterName.toLowerCase() === charName.toLowerCase());
-      const newRule = {
-        id: `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
-        keyword: kw,
-        characterName: charName
-      };
-
-      if (idx >= 0) {
-        updated[idx] = newRule;
-      } else {
+      const exists = updated.some((r) => r.keyword === kw && r.characterName.trim().toLowerCase() === charName.trim().toLowerCase());
+      if (!exists) {
+        const newRule = {
+          id: `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
+          keyword: kw,
+          characterName: charName
+        };
         updated.push(newRule);
       }
     });
@@ -707,12 +704,10 @@ export default function KhoAnhModal({
         if (newRules.length > 0 && onUpdateDictionary) {
           const updatedRules = [...rules];
           newRules.forEach((newR) => {
-            const idx = updatedRules.findIndex(
-              (r) => r.keyword.toLowerCase() === newR.keyword.toLowerCase() && r.characterName.toLowerCase() === newR.characterName.toLowerCase()
+            const exists = updatedRules.some(
+              (r) => r.keyword === newR.keyword && r.characterName.trim().toLowerCase() === newR.characterName.trim().toLowerCase()
             );
-            if (idx >= 0) {
-              updatedRules[idx] = newR;
-            } else {
+            if (!exists) {
               updatedRules.push(newR);
             }
           });
@@ -751,7 +746,7 @@ export default function KhoAnhModal({
     rawCharNames.forEach(charName => {
       const charKeywords = Array.from(new Set(
         rules
-          .filter(r => r.characterName === charName)
+          .filter(r => r.characterName.trim().toLowerCase() === charName.trim().toLowerCase())
           .map(r => r.keyword?.trim())
           .filter(Boolean)
       ));
@@ -780,7 +775,7 @@ export default function KhoAnhModal({
     uniqueBgNames.forEach(bg => {
       const bgKeywords = Array.from(new Set(
         rules
-          .filter(r => r.characterName === bg)
+          .filter(r => r.characterName.trim().toLowerCase() === bg.trim().toLowerCase())
           .map(r => r.keyword?.trim())
           .filter(Boolean)
       ));
@@ -999,7 +994,7 @@ export default function KhoAnhModal({
     const restoredBgsSet = new Set<string>(backgroundNames);
     const restoredRulesMap = new Map<string, DictionaryRule>();
     rules.forEach(r => {
-      restoredRulesMap.set(`${r.keyword.toLowerCase()}__${r.characterName.toLowerCase()}`, r);
+      restoredRulesMap.set(`${r.keyword.trim()}__${r.characterName.trim().toLowerCase()}`, r);
     });
 
     try {
@@ -1051,7 +1046,7 @@ export default function KhoAnhModal({
               const kwParts = String(r.keyword).split(/[,;]/).map((k: string) => k.trim()).filter(Boolean);
               kwParts.forEach((kw: string) => {
                 const charName = String(r.characterName).trim();
-                const key = `${kw.toLowerCase()}__${charName.toLowerCase()}`;
+                const key = `${kw}__${charName.toLowerCase()}`;
                 if (!restoredRulesMap.has(key)) {
                   restoredRulesMap.set(key, {
                     id: r.id || `dict_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1721,17 +1716,17 @@ export default function KhoAnhModal({
 
                       let currentRules = [...rules];
                       kwsToAdd.forEach(kw => {
-                        // Check if keyword is already mapped to this character
+                        // Check if exact keyword is already mapped to this character
                         const isAlreadyMapped = currentRules.some(
-                          r => r.keyword.toLowerCase() === kw.toLowerCase() && r.characterName.toLowerCase() === selectedChar.toLowerCase()
+                          r => r.keyword === kw && r.characterName.trim().toLowerCase() === selectedChar.trim().toLowerCase()
                         );
                         if (isAlreadyMapped) {
                           return;
                         }
                         
-                        // Check if keyword is mapped to another character
+                        // Check if exact keyword is mapped to another character
                         const existingIdx = currentRules.findIndex(
-                          r => r.keyword.toLowerCase() === kw.toLowerCase()
+                          r => r.keyword === kw
                         );
                         if (existingIdx >= 0) {
                           currentRules[existingIdx] = {
@@ -1771,9 +1766,9 @@ export default function KhoAnhModal({
 
                 {/* Rendering tags of triggers */}
                 <div className="flex flex-wrap gap-2 items-center">
-                  {rules.filter(r => r.characterName === selectedChar).length > 0 ? (
+                  {rules.filter(r => r.characterName.trim().toLowerCase() === selectedChar.trim().toLowerCase()).length > 0 ? (
                     rules
-                      .filter(r => r.characterName === selectedChar)
+                      .filter(r => r.characterName.trim().toLowerCase() === selectedChar.trim().toLowerCase())
                       .map((rule) => (
                         <span
                           key={rule.id}
