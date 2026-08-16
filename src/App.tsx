@@ -2398,7 +2398,7 @@ function App() {
                     videos={videos}
                     audioFile={audioFile}
                     audioDuration={audioDuration}
-                    config={config}
+                    config={{ ...config, backgroundNames }}
                     onConfigChange={setConfig}
                     previewTime={previewTime}
                     onPreviewTimeSelect={setPreviewTime}
@@ -2414,7 +2414,7 @@ function App() {
                     videos={videos}
                     audioFile={audioFile}
                     audioDuration={audioDuration}
-                    config={config}
+                    config={{ ...config, backgroundNames }}
                     bgMusicFiles={bgMusicFiles}
                     presets={presets}
                   />

@@ -251,4 +251,7 @@ export interface RenderConfig {
 
   // Video selection priority
   videoPriorityBlocks?: string;
+
+  // Background names list (bối cảnh)
+  backgroundNames?: string[];
 }

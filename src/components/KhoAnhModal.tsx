@@ -24,10 +24,8 @@ import {
   HelpCircle,
   Loader2,
   Video as VideoIcon,
-  FileJson,
   FileText,
   Download,
-  FolderUp,
   Layers,
   FileStack,
   CheckCircle2,
@@ -373,7 +371,6 @@ export default function KhoAnhModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
   const dictFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -612,17 +609,23 @@ export default function KhoAnhModal({
 
       const lines = content.split('\n');
       const newEmptyNames: string[] = [];
+      const newBgNames: string[] = [];
       const newRules: DictionaryRule[] = [];
 
       lines.forEach((line) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) return;
 
+        // Check if line represents background (* prefix)
+        const isBackground = trimmed.startsWith('*');
+        const cleanLine = isBackground ? trimmed.replace(/^\*+\s*/, '').trim() : trimmed;
+        if (!cleanLine) return;
+
         let charName = '';
         let keywordsList: string[] = [];
 
-        if (trimmed.includes('|')) {
-          const parts = trimmed.split('|');
+        if (cleanLine.includes('|')) {
+          const parts = cleanLine.split('|');
           if (parts.length >= 2) {
             const p0 = parts[0].trim();
             const p1 = parts[1].trim();
@@ -640,8 +643,8 @@ export default function KhoAnhModal({
               keywordsList = [p0];
             }
           }
-        } else if (trimmed.includes(':')) {
-          const parts = trimmed.split(':');
+        } else if (cleanLine.includes(':')) {
+          const parts = cleanLine.split(':');
           if (parts.length >= 2) {
             const p0 = parts[0].trim();
             const p1 = parts[1].trim();
@@ -649,22 +652,29 @@ export default function KhoAnhModal({
             keywordsList = p1.split(/[,;]/).map(k => k.trim()).filter(Boolean);
           }
         } else {
-          if (trimmed.includes(',') || trimmed.includes(';')) {
-            const parts = trimmed.split(/[,;]/).map(k => k.trim()).filter(Boolean);
+          if (cleanLine.includes(',') || cleanLine.includes(';')) {
+            const parts = cleanLine.split(/[,;]/).map(k => k.trim()).filter(Boolean);
             if (parts.length > 0) {
               charName = parts[0];
               keywordsList = parts;
             }
           } else {
-            charName = trimmed;
-            keywordsList = [trimmed];
+            charName = cleanLine;
+            keywordsList = [cleanLine];
           }
         }
 
         if (charName) {
-          if (!newEmptyNames.includes(charName)) {
-            newEmptyNames.push(charName);
+          if (isBackground) {
+            if (!newBgNames.includes(charName) && !backgroundNames.includes(charName)) {
+              newBgNames.push(charName);
+            }
+          } else {
+            if (!newEmptyNames.includes(charName)) {
+              newEmptyNames.push(charName);
+            }
           }
+
           keywordsList.forEach((kw) => {
             if (kw) {
               newRules.push({
@@ -677,10 +687,16 @@ export default function KhoAnhModal({
         }
       });
 
-      if (newEmptyNames.length > 0) {
+      const totalNewItems = newEmptyNames.length + newBgNames.length;
+      if (totalNewItems > 0 || newRules.length > 0) {
+        if (newBgNames.length > 0 && onUpdateBackgroundNames) {
+          const updatedBgs = [...new Set([...backgroundNames, ...newBgNames])];
+          onUpdateBackgroundNames(updatedBgs);
+        }
+
         setCreatedEmptyChars(prev => {
           const updated = [...prev];
-          newEmptyNames.forEach(name => {
+          [...newEmptyNames, ...newBgNames].forEach(name => {
             if (!updated.includes(name)) {
               updated.push(name);
             }
@@ -703,10 +719,13 @@ export default function KhoAnhModal({
           onUpdateDictionary(updatedRules);
         }
 
-        setSelectedChar(newEmptyNames[0]);
-        alert(`Đã nhập thành công ${newEmptyNames.length} nhân vật và ${newRules.length} từ khóa từ file .TXT!`);
+        const firstSelected = newEmptyNames[0] || newBgNames[0];
+        if (firstSelected) {
+          setSelectedChar(firstSelected);
+        }
+        alert(`Đã nhập thành công ${newEmptyNames.length} nhân vật, ${newBgNames.length} bối cảnh (*) và ${newRules.length} từ khóa từ file .TXT!`);
       } else {
-        alert('Không tìm thấy dữ liệu nhân vật hợp lệ trong file .TXT.');
+        alert('Không tìm thấy dữ liệu nhân vật hoặc bối cảnh hợp lệ trong file .TXT.');
       }
     };
     reader.readAsText(file);
@@ -714,87 +733,90 @@ export default function KhoAnhModal({
   };
 
   const handleExportTxt = () => {
-    const validChars = charactersList.filter(
-      name => name !== 'Tất cả' && name !== 'Không có nhân vật'
-    );
-
-    if (validChars.length === 0 && backgroundNames.length === 0) {
-      alert('Chưa có nhân vật nào để xuất.');
-      return;
-    }
-
-    const lines: string[] = [
-      '# Danh sách nhân vật và từ khóa phụ đề',
-      '# Định dạng: Từ khóa 1, Từ khóa 2 | Tên nhân vật',
-      ''
-    ];
-
-    validChars.forEach(charName => {
-      const charKeywords = rules
-        .filter(r => r.characterName === charName)
-        .map(r => r.keyword)
-        .filter(Boolean);
-
-      if (charKeywords.length > 0) {
-        lines.push(`${charKeywords.join(', ')} | ${charName}`);
-      } else {
-        lines.push(charName);
+    // Collect character names (excluding 'Tất cả', 'Không có nhân vật', and background names)
+    const rawCharNames = new Set<string>();
+    charactersList.forEach(name => {
+      if (name && name !== 'Tất cả' && name !== 'Không có nhân vật' && !backgroundNames.includes(name)) {
+        rawCharNames.add(name);
+      }
+    });
+    rules.forEach(r => {
+      if (r.characterName && r.characterName !== 'Tất cả' && r.characterName !== 'Không có nhân vật' && !backgroundNames.includes(r.characterName)) {
+        rawCharNames.add(r.characterName);
       }
     });
 
-    if (backgroundNames.length > 0) {
-      lines.push('');
-      lines.push('# Bối cảnh');
-      backgroundNames.forEach(bg => {
-        const bgKeywords = rules
+    // Character lines list
+    const charEntries: { sortKey: string; line: string }[] = [];
+    rawCharNames.forEach(charName => {
+      const charKeywords = Array.from(new Set(
+        rules
+          .filter(r => r.characterName === charName)
+          .map(r => r.keyword?.trim())
+          .filter(Boolean)
+      ));
+
+      if (charKeywords.length > 0) {
+        const line = `${charKeywords.join(', ')} | ${charName}`;
+        charEntries.push({
+          sortKey: charKeywords[0] || charName,
+          line
+        });
+      } else {
+        charEntries.push({
+          sortKey: charName,
+          line: charName
+        });
+      }
+    });
+
+    // Sort character lines alphabetically A-Z by primary keyword / sortKey
+    charEntries.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'vi', { sensitivity: 'base' }));
+    const charLines = charEntries.map(e => e.line);
+
+    // Background lines list
+    const bgEntries: { sortKey: string; line: string }[] = [];
+    const uniqueBgNames = Array.from(new Set(backgroundNames)).filter(Boolean);
+    uniqueBgNames.forEach(bg => {
+      const bgKeywords = Array.from(new Set(
+        rules
           .filter(r => r.characterName === bg)
-          .map(r => r.keyword)
-          .filter(Boolean);
-        if (bgKeywords.length > 0) {
-          lines.push(`${bgKeywords.join(', ')} | ${bg}`);
-        } else {
-          lines.push(bg);
-        }
-      });
+          .map(r => r.keyword?.trim())
+          .filter(Boolean)
+      ));
+
+      if (bgKeywords.length > 0) {
+        const line = `* ${bgKeywords.join(', ')} | ${bg}`;
+        bgEntries.push({
+          sortKey: bgKeywords[0] || bg,
+          line
+        });
+      } else {
+        const line = `* ${bg}`;
+        bgEntries.push({
+          sortKey: bg,
+          line
+        });
+      }
+    });
+
+    // Sort background lines alphabetically A-Z by primary keyword / sortKey
+    bgEntries.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'vi', { sensitivity: 'base' }));
+    const bgLines = bgEntries.map(e => e.line);
+
+    if (charLines.length === 0 && bgLines.length === 0) {
+      alert('Chưa có nhân vật hoặc bối cảnh nào để xuất.');
+      return;
     }
 
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    // Clean export without comments or redundant headers: characters first, backgrounds below
+    const allLines = [...charLines, ...bgLines];
+
+    const blob = new Blob([allLines.join('\n')], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `danh_sach_nhan_vat_${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportConfigJson = () => {
-    const validChars = charactersList.filter(
-      name => name !== 'Tất cả' && name !== 'Không có nhân vật'
-    );
-
-    if (validChars.length === 0 && backgroundNames.length === 0) {
-      alert('Chưa có nhân vật nào để xuất.');
-      return;
-    }
-
-    const exportData = {
-      version: 1,
-      type: 'vsync_characters_config',
-      exportDate: new Date().toISOString(),
-      totalCharacters: validChars.length,
-      characters: validChars,
-      backgroundNames: backgroundNames,
-      dictionary: rules
-    };
-
-    const jsonStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cau_hinh_nhan_vat_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -962,102 +984,6 @@ export default function KhoAnhModal({
     } finally {
       setIsExportingParts(false);
     }
-  };
-
-  const handleFolderUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const imageRegex = /\.(png|jpe?g|webp|gif|bmp)$/i;
-    const imageFiles: File[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      if (imageRegex.test(files[i].name)) {
-        imageFiles.push(files[i]);
-      }
-    }
-
-    if (imageFiles.length === 0) {
-      alert('Không tìm thấy tệp ảnh hợp lệ trong thư mục được chọn.');
-      e.target.value = '';
-      return;
-    }
-
-    startTransition(async () => {
-      setOptimizeProgress({ current: 0, total: imageFiles.length });
-      const loaded: CharacterImage[] = [];
-      const detectedCharacters = new Set<string>();
-
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
-        const path = file.webkitRelativePath || file.name;
-        const id = `img_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
-
-        let charName: string | undefined = undefined;
-        if (file.webkitRelativePath) {
-          const parts = file.webkitRelativePath.split('/');
-          if (parts.length >= 2) {
-            // e.g. "Characters/Ava/001.png" -> parts[parts.length - 2] is "Ava"
-            const potentialName = parts[parts.length - 2].trim();
-            if (potentialName && potentialName.toLowerCase() !== 'images' && potentialName.toLowerCase() !== 'anh') {
-              charName = potentialName;
-            }
-          }
-        }
-
-        if (!charName && selectedChar !== 'Tất cả' && selectedChar !== 'Không có nhân vật') {
-          charName = selectedChar;
-        }
-
-        if (charName) {
-          detectedCharacters.add(charName);
-        }
-
-        const keywords = extractKeywords(file.name, path);
-        if (charName) {
-          charName.split(/\s+/).forEach(word => {
-            if (word.length >= 2 && !STOP_WORDS.has(word.toLowerCase())) {
-              keywords.push(word);
-            }
-          });
-        }
-
-        const { blob, url } = await compressAndResizeImage(file);
-        const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
-
-        loaded.push({
-          id,
-          name: file.name,
-          path,
-          url,
-          file: compressedFile,
-          keywords: Array.from(new Set(keywords)),
-          characterName: charName
-        });
-
-        if (i % 20 === 0 || i === imageFiles.length - 1) {
-          setOptimizeProgress({ current: i + 1, total: imageFiles.length });
-          await new Promise(r => setTimeout(r, 0));
-        }
-      }
-
-      if (detectedCharacters.size > 0) {
-        setCreatedEmptyChars(prev => {
-          const updated = Array.from(new Set([...prev, ...Array.from(detectedCharacters)]));
-          try {
-            localStorage.setItem('vsync_empty_chars', JSON.stringify(updated));
-          } catch (err) {}
-          return updated;
-        });
-      }
-
-      if (loaded.length > 0) {
-        onImagesLoaded(loaded);
-        alert(`✅ Đã nạp thành công ${loaded.length} ảnh từ thư mục! Tự động nhận diện ${detectedCharacters.size} danh mục nhân vật.`);
-      }
-      setOptimizeProgress(null);
-      e.target.value = '';
-    });
   };
 
   const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1372,37 +1298,6 @@ export default function KhoAnhModal({
               className="hidden"
               onChange={handleImportJson}
             />
-
-            {/* Folder Input */}
-            <input
-              type="file"
-              ref={folderInputRef}
-              {...({ webkitdirectory: "", directory: "", multiple: true } as any)}
-              className="hidden"
-              onChange={handleFolderUpload}
-            />
-
-            {/* Direct Folder Import */}
-            <button
-              type="button"
-              onClick={() => folderInputRef.current?.click()}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Chọn thư mục chứa ảnh trên máy tính (tự động phân loại theo thư mục con nhân vật, không sợ tràn RAM)"
-            >
-              <FolderUp size={13} />
-              <span>Nhập Thư Mục Ảnh</span>
-            </button>
-
-            {/* Export Config JSON (Lightweight, instant, best for transferring characters + keywords) */}
-            <button
-              type="button"
-              onClick={handleExportConfigJson}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-              title="Xuất nhanh Danh sách Nhân vật & Từ khóa phụ đề (file .JSON nhẹ, chuyển sang máy khác chỉ 1 click)"
-            >
-              <FileJson size={13} />
-              <span>Xuất Cấu Hình JSON</span>
-            </button>
 
             {/* Export JSON split into Parts (Anti-Out of Memory) */}
             <button

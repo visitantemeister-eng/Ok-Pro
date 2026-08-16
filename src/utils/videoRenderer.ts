@@ -390,6 +390,29 @@ const drawColumnFrame = (
       const blockId = targetBlock ? targetBlock.id : 0;
       imageShouldFlip = (blockId % 2 === 0);
     }
+
+    // Background images must NEVER flip horizontally regardless of column or position
+    const currentMediaId = isPrev ? prevImgId : activeImgId;
+    if (currentMediaId) {
+      const foundImg = images.find(img => img.id === currentMediaId);
+      const charName = foundImg?.characterName;
+      if (charName) {
+        let bgList = config.backgroundNames;
+        if (!bgList || bgList.length === 0) {
+          try {
+            const savedBg = typeof localStorage !== 'undefined' ? localStorage.getItem('vsync_background_names') : null;
+            if (savedBg) bgList = JSON.parse(savedBg);
+          } catch {}
+        }
+        if (bgList && bgList.some((b: string) => b.trim().toLowerCase() === charName.trim().toLowerCase())) {
+          imageShouldFlip = false;
+        }
+        if (charName.trim().startsWith('*')) {
+          imageShouldFlip = false;
+        }
+      }
+    }
+
     if (imageShouldFlip) {
       ctx.scale(-1, 1);
     }
